@@ -158,7 +158,9 @@
     // ephemeral-port probe are not the same news.
     var services = detail.port_services || [];
     services.slice(0, 8).forEach(function (entry) {
-      var chip = el('span', 'port-chip cat-' + entry.category, entry.port);
+      // Neutral in the row; the category is conveyed by the tooltip and,
+      // with a legend, by the breakdown panel below.
+      var chip = el('span', 'port-chip', entry.port);
       chip.title = entry.service + ' · ' + entry.category;
       meta.appendChild(chip);
     });

@@ -179,6 +179,10 @@ header {
   font-family: var(--font-mono); font-size: 9px; color: var(--faint);
   overflow: hidden; white-space: nowrap;
 }
+/* An hourly label needs ~54px and the slot is ~54px, so every label printed
+   would sit edge to edge and read as one run of digits. Keep every third;
+   the bars themselves remain hourly. */
+.tl-axis span:not(:nth-child(3n+1)) { visibility: hidden; }
 
 /* ----------------------------------------------------------------- panels */
 
@@ -248,7 +252,15 @@ header {
 .chip { font-family: var(--font-mono); font-size: 11px; color: var(--dim); }
 .chip b { color: var(--text); font-weight: 500; }
 .chip-x { color: var(--faint); }
-.port-chip { font-family: var(--font-mono); font-size: 11px; padding: 0 3px; border-radius: 1px; }
+/* Ports inside an alert row stay neutral. Category colour is meaningful
+   only where a legend exists -- in the "Probed services" breakdown the
+   service name is printed beside it. Here the hue would have no key, and
+   --cat-database is the same red as --high, so a red port number would read
+   as a severity signal. The category is still available on hover. */
+.port-chip {
+  font-family: var(--font-mono); font-size: 11px; padding: 0 3px;
+  border-radius: 1px; color: var(--dim); font-variant-numeric: tabular-nums;
+}
 
 /* -------------------------------------------------------- empty & loading */
 
@@ -315,7 +327,10 @@ footer .mono { color: var(--dim); }
 }
 @media (max-width: 680px) {
   .shell { padding: 0 16px; }
-  .head-row { height: auto; flex-wrap: wrap; gap: 10px; padding: 12px 0; }
+  /* .head-row shares its element with .shell. Set only the block axis --
+     a `padding` shorthand (or padding-inline) resets .shell's horizontal
+     padding and pushes the wordmark hard against the viewport edge. */
+  .head-row { height: auto; flex-wrap: wrap; gap: 10px; padding-block: 12px; }
   .rules { display: none; }
   .stats { grid-template-columns: 1fr 1fr; }
   .stat-value { font-size: 22px; }
