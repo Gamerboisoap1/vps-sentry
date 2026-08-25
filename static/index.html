@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>VPS Sentinel</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%230a0a0b'/><path d='M4 12V6l4-2.5L12 6v6' stroke='%235b9dd9' stroke-width='1.5' fill='none'/></svg>">
+</head>
+<body>
+
+<header>
+  <div class="shell head-row">
+    <div class="wordmark">VPS Sentinel <span>/ intrusion monitor</span></div>
+
+    <div class="posture posture-0" id="posture" title="Alerts with activity in the last 15 minutes">
+      <span class="bars"><i></i><i></i><i></i></span>
+      <span id="posture-text">—</span>
+    </div>
+
+    <div class="freshness" id="freshness" title="Time since the last successful log read">
+      <span class="dot"></span>
+      <span id="freshness-text">connecting</span>
+    </div>
+
+    <div class="rules" id="rules"></div>
+  </div>
+</header>
+
+<!-- Degraded-state reporting. A parser that cannot read its log, or an
+     enrichment source that is unavailable, has to be visible: silence here
+     would be indistinguishable from a quiet network. -->
+<section class="diagnostics" id="diagnostics" hidden>
+  <div class="shell" id="diagnostics-body"></div>
+</section>
+
+<main class="shell">
+
+  <section class="stats" id="stats">
+    <div class="stat"><div class="stat-value mono" id="stat-attackers">—</div><div class="stat-label">Unique sources</div></div>
+    <div class="stat d-auth"><div class="stat-value mono" id="stat-ssh">—</div><div class="stat-label">SSH alerts</div></div>
+    <div class="stat d-net"><div class="stat-value mono" id="stat-scan">—</div><div class="stat-label">Scan alerts</div></div>
+    <div class="stat d-auth"><div class="stat-value mono" id="stat-ssh24">—</div><div class="stat-label">Failed auth 24h</div></div>
+    <div class="stat d-net"><div class="stat-value mono" id="stat-scan24">—</div><div class="stat-label">Blocked probes 24h</div></div>
+  </section>
+
+  <!-- Hourly buckets rather than a running average: a brute force is a burst,
+       and averaging is exactly what hides one. -->
+  <section class="timeline">
+    <div class="tl-head">
+      <span class="tl-title">Activity · last 24h</span>
+      <span class="tl-peak" id="tl-peak"></span>
+      <span class="tl-legend">
+        <span><i style="background:var(--auth)"></i>Failed auth</span>
+        <span><i style="background:var(--net)"></i>Blocked probes</span>
+      </span>
+    </div>
+    <div class="tl-bars" id="tl-bars"></div>
+    <div class="tl-axis" id="tl-axis"></div>
+  </section>
+
+  <section class="panels">
+    <div class="panel panel-ssh">
+      <div class="panel-head">
+        <span class="panel-title">SSH Brute Force</span>
+        <span class="panel-rule" id="ssh-rule"></span>
+        <span class="panel-count" id="ssh-count"></span>
+      </div>
+      <div class="rows" id="ssh-rows"></div>
+    </div>
+
+    <div class="panel panel-scan">
+      <div class="panel-head">
+        <span class="panel-title">Network Scans</span>
+        <span class="panel-rule" id="scan-rule"></span>
+        <span class="panel-count" id="scan-count"></span>
+      </div>
+      <div class="rows" id="scan-rows"></div>
+    </div>
+  </section>
+
+  <section class="breakdown">
+    <div class="break-col">
+      <div class="break-title">Targeted usernames</div>
+      <div id="usernames"></div>
+    </div>
+    <div class="break-col">
+      <div class="break-title">Source countries</div>
+      <div id="countries"></div>
+    </div>
+    <div class="break-col">
+      <div class="break-title">Probed services · 24h</div>
+      <div id="ports"></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Detection is rule-based: threshold within a sliding window. No blocking is performed.</span>
+    <span id="foot-geo"></span>
+    <span id="foot-f2b"></span>
+  </footer>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
