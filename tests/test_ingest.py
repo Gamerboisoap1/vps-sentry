@@ -1,8 +1,8 @@
 """End-to-end: real files on disk through parse, store, and detect."""
 from datetime import datetime, timedelta
 
-from sentinel.db import connect
-from sentinel.ingest import Ingestor
+from sentry.db import connect
+from sentry.ingest import Ingestor
 
 ATTACKER = "45.148.10.92"
 SCANNER = "193.34.76.15"

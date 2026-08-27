@@ -1,7 +1,7 @@
 """Detection rules: thresholds, windows, and alert escalation."""
 import json
 
-from sentinel.detect import PORT_SCAN, SSH_BRUTEFORCE, detect_port_scan, detect_ssh_bruteforce
+from sentry.detect import PORT_SCAN, SSH_BRUTEFORCE, detect_port_scan, detect_ssh_bruteforce
 from tests.conftest import add_scan_event, add_ssh_event
 
 ATTACKER = "45.148.10.92"

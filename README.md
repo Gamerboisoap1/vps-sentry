@@ -1,11 +1,13 @@
-# VPS Sentinel
+# VPS Sentry
 
-A lightweight VPS security monitor. It reads two logs your server already
+**Lightweight VPS Security Monitor**
+
+It reads two logs your server already
 writes, applies two rule-based detectors, and shows what is happening on a
 dashboard that refreshes itself.
 
-A sentinel watches and raises the alarm; it does not leave its post to fight.
-VPS Sentinel detects and reports — blocking stays a decision you (or fail2ban)
+A sentry watches and raises the alarm; it does not leave its post to fight.
+VPS Sentry detects and reports — blocking stays a decision you (or fail2ban)
 make.
 
 No AI, no external threat-intel APIs, no SIEM stack, and no new service
@@ -84,7 +86,7 @@ sudo ./install.sh
 ```
 
 That single command installs the dependencies, creates an unprivileged
-`sentinel` service account, builds a virtualenv under `/opt/vps-sentinel`,
+`sentry` service account, builds a virtualenv under `/opt/vps-sentry`,
 writes a hardened systemd unit, and starts it on loopback. It is safe to
 re-run — every step checks its own state first.
 
@@ -105,8 +107,8 @@ sudo MAXMIND_LICENSE_KEY=your_key_here ./install.sh
 Afterwards:
 
 ```bash
-systemctl status vps-sentinel
-journalctl -u vps-sentinel -f
+systemctl status vps-sentry
+journalctl -u vps-sentry -f
 sudo ./install.sh --uninstall
 ```
 
@@ -117,7 +119,7 @@ installer creates a system account in the `adm` group — which is what grants
 read access to `auth.log` and `ufw.log` — and grants exactly one sudoers rule:
 
 ```
-sentinel ALL=(root) NOPASSWD: /usr/bin/fail2ban-client status sshd
+sentry ALL=(root) NOPASSWD: /usr/bin/fail2ban-client status sshd
 ```
 
 That one command, and nothing else. The systemd unit adds `ProtectSystem=strict`,
@@ -128,9 +130,9 @@ because it would block that sudo rule.
 ## Running manually
 
 ```bash
-SENTINEL_AUTH_LOG=/var/log/auth.log \
-SENTINEL_UFW_LOG=/var/log/ufw.log \
-  ./.venv/bin/python -m uvicorn sentinel.api:app --host 127.0.0.1 --port 8787
+SENTRY_AUTH_LOG=/var/log/auth.log \
+SENTRY_UFW_LOG=/var/log/ufw.log \
+  ./.venv/bin/python -m uvicorn sentry.api:app --host 127.0.0.1 --port 8787
 ```
 
 Reach it from your laptop over an SSH tunnel:
@@ -139,7 +141,7 @@ Reach it from your laptop over an SSH tunnel:
 ssh -N -L 8787:127.0.0.1:8787 you@your-vps
 ```
 
-**Sentinel binds to loopback on purpose.** Serving it on `0.0.0.0` would publish
+**Sentry binds to loopback on purpose.** Serving it on `0.0.0.0` would publish
 your log data and an unauthenticated endpoint on the machine you are trying to
 protect, which would undo the whole point.
 
@@ -147,12 +149,12 @@ protect, which would undo the whole point.
 
 1. **Does `/var/log/auth.log` exist?** On newer Ubuntu cloud images rsyslog is
    not installed and authentication goes only to journald. If the file is
-   missing, Sentinel says so on the dashboard rather than sitting silently at
+   missing, Sentry says so on the dashboard rather than sitting silently at
    zero. Fix with `apt install rsyslog`, or export the journal to a file.
 2. **Is UFW logging on?** `sudo ufw logging low` is enough — low already logs
    blocked packets.
 3. **Can the process read the logs?** Both files are normally `root:adm`.
-   Either run Sentinel as a user in the `adm` group, or run it as root.
+   Either run Sentry as a user in the `adm` group, or run it as root.
 
 ### Optional enrichment
 
@@ -161,7 +163,7 @@ licence key are required, though lookups afterwards are entirely offline) and
 place it at `data/GeoLite2-Country.mmdb`. Without it, alerts simply show no
 country.
 
-**fail2ban.** If `fail2ban-client` is installed and reachable, Sentinel shows
+**fail2ban.** If `fail2ban-client` is installed and reachable, Sentry shows
 whether each attacker is currently banned. Querying it usually needs root.
 Without it, every alert shows `ban unknown` — which is rendered distinctly
 from `not banned`, because "we could not ask" and "we asked and it is not
@@ -171,24 +173,24 @@ banned" are different facts.
 
 ## Configuration
 
-Every tunable is an environment variable, defined in `sentinel/config.py`.
+Every tunable is an environment variable, defined in `sentry/config.py`.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SENTINEL_AUTH_LOG` | `/var/log/auth.log` | SSH log to read |
-| `SENTINEL_UFW_LOG` | `/var/log/ufw.log` | Firewall log to read |
-| `SENTINEL_DB` | `data/sentinel.db` | SQLite file |
-| `SENTINEL_SSH_THRESHOLD` | `5` | Failed auths to trip the rule |
-| `SENTINEL_SSH_WINDOW` | `600` | SSH window, seconds |
-| `SENTINEL_SSH_COOLDOWN` | `600` | Suppression window, seconds |
-| `SENTINEL_SCAN_PORTS` | `4` | Distinct ports to trip the rule |
-| `SENTINEL_SCAN_WINDOW` | `60` | Scan window, seconds |
-| `SENTINEL_POLL_SECONDS` | `10` | Ingest cycle interval |
-| `SENTINEL_STALE_AFTER` | `60` | Freshness alarm threshold |
-| `SENTINEL_RETENTION_DAYS` | `30` | Event retention horizon |
-| `SENTINEL_HOST` / `SENTINEL_PORT` | `127.0.0.1` / `8787` | Bind address |
-| `SENTINEL_F2B_JAIL` | `sshd` | fail2ban jail to query |
-| `SENTINEL_F2B_ENABLED` | `1` | Set to `0` to skip fail2ban entirely |
+| `SENTRY_AUTH_LOG` | `/var/log/auth.log` | SSH log to read |
+| `SENTRY_UFW_LOG` | `/var/log/ufw.log` | Firewall log to read |
+| `SENTRY_DB` | `data/sentry.db` | SQLite file |
+| `SENTRY_SSH_THRESHOLD` | `5` | Failed auths to trip the rule |
+| `SENTRY_SSH_WINDOW` | `600` | SSH window, seconds |
+| `SENTRY_SSH_COOLDOWN` | `600` | Suppression window, seconds |
+| `SENTRY_SCAN_PORTS` | `4` | Distinct ports to trip the rule |
+| `SENTRY_SCAN_WINDOW` | `60` | Scan window, seconds |
+| `SENTRY_POLL_SECONDS` | `10` | Ingest cycle interval |
+| `SENTRY_STALE_AFTER` | `60` | Freshness alarm threshold |
+| `SENTRY_RETENTION_DAYS` | `30` | Event retention horizon |
+| `SENTRY_HOST` / `SENTRY_PORT` | `127.0.0.1` / `8787` | Bind address |
+| `SENTRY_F2B_JAIL` | `sshd` | fail2ban jail to query |
+| `SENTRY_F2B_ENABLED` | `1` | Set to `0` to skip fail2ban entirely |
 
 ---
 
@@ -252,14 +254,14 @@ These are properties of the design, and stating them is part of the work.
 - **UFW rate-limits its own logging** (roughly a burst then a few lines a
   minute). A thousand-port sweep may leave only a handful of lines. The
   four-port threshold is low precisely because the evidence is throttled —
-  Sentinel sees a sample of a scan, not the scan.
+  Sentry sees a sample of a scan, not the scan.
 - **A slow scan evades the window.** Paced wider than sixty seconds, a sweep
   stays under the rule. This is the standard trade-off of a fixed window and
   is covered by an explicit test.
 - **Detection is per-IP**, so distributed attempts from many addresses do not
   pool into one alert.
 - **fail2ban's answer is point-in-time.** Stock bans expire after ten minutes,
-  so "not banned" can mean "was banned, already released". Sentinel records the
+  so "not banned" can mean "was banned, already released". Sentry records the
   status at detection time and queries again live, and shows both.
 - **The dashboard has no authentication.** It is protected by binding to
   loopback, nothing more. Do not expose it.
@@ -282,7 +284,7 @@ stats exclude precursor lines and that the health endpoint reports staleness.
 ## Layout
 
 ```
-sentinel/
+sentry/
 ├── config.py         Thresholds, paths, bind address
 ├── timeparse.py      Syslog timestamps, including year inference
 ├── tailer.py         Rotation-safe incremental reads

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# VPS Sentinel installer for Debian / Ubuntu systems with systemd.
+# VPS Sentry installer for Debian / Ubuntu systems with systemd.
 #
 # Run this from the uploaded project directory as root:
 #
 #     sudo ./install.sh
 #
-# It installs to /opt/vps-sentinel, creates an unprivileged service account,
+# It installs to /opt/vps-sentry, creates an unprivileged service account,
 # and starts a systemd unit bound to loopback. Re-running it is safe: every
 # step checks its own state before acting.
 #
@@ -14,11 +14,11 @@
 
 set -euo pipefail
 
-INSTALL_DIR="/opt/vps-sentinel"
-SERVICE_USER="sentinel"
-SERVICE_NAME="vps-sentinel"
+INSTALL_DIR="/opt/vps-sentry"
+SERVICE_USER="sentry"
+SERVICE_NAME="vps-sentry"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-SUDOERS_FILE="/etc/sudoers.d/vps-sentinel"
+SUDOERS_FILE="/etc/sudoers.d/vps-sentry"
 BIND_HOST="127.0.0.1"
 BIND_PORT="8787"
 F2B_JAIL="sshd"
@@ -39,7 +39,7 @@ note()  { printf '    %s%s%s\n' "$DIM" "$1" "$RESET"; }
 # ------------------------------------------------------------ uninstall ----
 
 uninstall() {
-    step "Removing VPS Sentinel"
+    step "Removing VPS Sentry"
     systemctl stop    "$SERVICE_NAME" 2>/dev/null || true
     systemctl disable "$SERVICE_NAME" 2>/dev/null || true
     rm -f "$UNIT_FILE" "$SUDOERS_FILE"
@@ -59,7 +59,7 @@ step "Checking the environment"
 [[ $EUID -eq 0 ]] || fail "must run as root — try: sudo ./install.sh"
 command -v systemctl >/dev/null 2>&1 || fail "systemd not found; this installer targets systemd hosts"
 command -v apt-get   >/dev/null 2>&1 || fail "apt-get not found; this installer targets Debian/Ubuntu"
-[[ -f "$SRC_DIR/sentinel/api.py" ]]  || fail "run this from inside the project directory"
+[[ -f "$SRC_DIR/sentry/api.py" ]]  || fail "run this from inside the project directory"
 
 ok "root, systemd, and apt available"
 
@@ -153,7 +153,7 @@ fi
 step "Installing to $INSTALL_DIR"
 
 mkdir -p "$INSTALL_DIR"
-for item in sentinel static tools requirements.txt README.md; do
+for item in sentry static tools requirements.txt README.md; do
     [[ -e "$SRC_DIR/$item" ]] && cp -r "$SRC_DIR/$item" "$INSTALL_DIR/"
 done
 mkdir -p "$INSTALL_DIR/data"
@@ -202,7 +202,7 @@ step "Creating the systemd service"
 
 cat > "$UNIT_FILE" <<UNIT
 [Unit]
-Description=VPS Sentinel - SSH brute force and port scan monitor
+Description=VPS Sentry - SSH brute force and port scan monitor
 Documentation=file://$INSTALL_DIR/README.md
 After=network.target rsyslog.service
 Wants=rsyslog.service
@@ -214,16 +214,16 @@ Group=$SERVICE_USER
 SupplementaryGroups=adm
 WorkingDirectory=$INSTALL_DIR
 
-Environment=SENTINEL_AUTH_LOG=/var/log/auth.log
-Environment=SENTINEL_UFW_LOG=/var/log/ufw.log
-Environment=SENTINEL_DB=$INSTALL_DIR/data/sentinel.db
-Environment=SENTINEL_GEOIP_DB=$INSTALL_DIR/data/GeoLite2-Country.mmdb
-Environment=SENTINEL_F2B_JAIL=$F2B_JAIL
-Environment=SENTINEL_HOST=$BIND_HOST
-Environment=SENTINEL_PORT=$BIND_PORT
-Environment=SENTINEL_POLL_SECONDS=10
+Environment=SENTRY_AUTH_LOG=/var/log/auth.log
+Environment=SENTRY_UFW_LOG=/var/log/ufw.log
+Environment=SENTRY_DB=$INSTALL_DIR/data/sentry.db
+Environment=SENTRY_GEOIP_DB=$INSTALL_DIR/data/GeoLite2-Country.mmdb
+Environment=SENTRY_F2B_JAIL=$F2B_JAIL
+Environment=SENTRY_HOST=$BIND_HOST
+Environment=SENTRY_PORT=$BIND_PORT
+Environment=SENTRY_POLL_SECONDS=10
 
-ExecStart=$INSTALL_DIR/.venv/bin/python -m uvicorn sentinel.api:app --host $BIND_HOST --port $BIND_PORT
+ExecStart=$INSTALL_DIR/.venv/bin/python -m uvicorn sentry.api:app --host $BIND_HOST --port $BIND_PORT
 Restart=on-failure
 RestartSec=5
 
@@ -263,7 +263,7 @@ step "Done"
 
 cat <<DONE
 
-    VPS Sentinel is listening on ${BIND_HOST}:${BIND_PORT}.
+    VPS Sentry is listening on ${BIND_HOST}:${BIND_PORT}.
 
     It binds to loopback deliberately. Exposing it publicly would publish
     your log data and an unauthenticated endpoint on the machine you are

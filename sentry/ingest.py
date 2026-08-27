@@ -37,7 +37,7 @@ from .parsers import ssh as ssh_parser
 from .parsers import ufw as ufw_parser
 from .tailer import TailPosition, read_new_lines
 
-log = logging.getLogger("sentinel.ingest")
+log = logging.getLogger("sentry.ingest")
 
 
 @dataclass
@@ -205,7 +205,7 @@ class Ingestor:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="VPS Sentinel log ingestion")
+    parser = argparse.ArgumentParser(description="VPS Sentry log ingestion")
     parser.add_argument("--once", action="store_true", help="run a single cycle and exit")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()

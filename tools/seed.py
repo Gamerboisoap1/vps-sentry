@@ -156,7 +156,7 @@ def write_log(path: Path, entries: list[tuple[datetime, str]]) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed Sentinel with demo log data")
+    parser = argparse.ArgumentParser(description="Seed Sentry with demo log data")
     parser.add_argument("--dir", type=Path, default=DEMO_DIR, help="where to write the logs")
     parser.add_argument("--reset", action="store_true", help="also delete the existing database")
     parser.add_argument("--seed", type=int, default=7, help="RNG seed for reproducible output")
@@ -172,7 +172,7 @@ def main() -> None:
 
     if args.reset:
         for suffix in ("", "-wal", "-shm"):
-            db = ROOT / "data" / f"sentinel.db{suffix}"
+            db = ROOT / "data" / f"sentry.db{suffix}"
             if db.exists():
                 db.unlink()
         print("  database reset")
@@ -181,8 +181,8 @@ def main() -> None:
     print(f"  {ufw_path}: {ufw_count} lines")
     print()
     print("  Run the dashboard against them with:")
-    print(f"    SENTINEL_AUTH_LOG={auth_path} SENTINEL_UFW_LOG={ufw_path} \\")
-    print("      ./.venv/bin/python -m uvicorn sentinel.api:app --port 8787")
+    print(f"    SENTRY_AUTH_LOG={auth_path} SENTRY_UFW_LOG={ufw_path} \\")
+    print("      ./.venv/bin/python -m uvicorn sentry.api:app --port 8787")
 
 
 if __name__ == "__main__":

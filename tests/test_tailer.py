@@ -1,7 +1,7 @@
 """Rotation safety. These are the cases that silently break naive tailers."""
 import os
 
-from sentinel.tailer import TailPosition, read_new_lines
+from sentry.tailer import TailPosition, read_new_lines
 
 
 def test_first_read_returns_everything(tmp_path):

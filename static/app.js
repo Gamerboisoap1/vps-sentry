@@ -1,4 +1,4 @@
-/* Sentinel dashboard client.
+/* Sentry dashboard client.
  *
  * SECURITY NOTE: usernames, and to a lesser extent the rest of the alert
  * payload, originate in attacker-controlled log lines. An attacker who can
@@ -401,7 +401,7 @@
     document.getElementById('freshness-text').textContent = 'API unreachable';
     showDiagnostics([[
       'dashboard',
-      'Cannot reach the Sentinel API (' + error + '). Figures below are the last ' +
+      'Cannot reach the Sentry API (' + error + '). Figures below are the last ' +
       'values received and may be out of date.',
       'error'
     ]]);

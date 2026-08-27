@@ -1,7 +1,7 @@
 """Port identification. Presentation-layer only -- it never gates an alert."""
 import pytest
 
-from sentinel.services import CATEGORIES, PORT_SERVICES, service_for
+from sentry.services import CATEGORIES, PORT_SERVICES, service_for
 
 
 @pytest.mark.parametrize("port,name,category", [

@@ -1,6 +1,6 @@
 """FastAPI application: JSON endpoints plus the static dashboard.
 
-Binds to loopback by default (see :mod:`sentinel.config`). Exposing this on a
+Binds to loopback by default (see :mod:`sentry.config`). Exposing this on a
 public interface would publish your log data and an unauthenticated endpoint
 on the machine you are trying to protect; reach it over an SSH tunnel instead.
 """
@@ -30,7 +30,7 @@ from .ingest import Ingestor
 from .parsers.ssh import COUNTING_KINDS
 from .services import service_for
 
-log = logging.getLogger("sentinel.api")
+log = logging.getLogger("sentry.api")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 _COUNTING_KINDS_SQL = ",".join(f"'{k}'" for k in sorted(COUNTING_KINDS))
@@ -39,7 +39,7 @@ _COUNTING_KINDS_SQL = ",".join(f"'{k}'" for k in sorted(COUNTING_KINDS))
 class NoCacheStaticFiles(StaticFiles):
     """Serve the dashboard assets without caching.
 
-    Sentinel is a single-host tool reached over a loopback tunnel, so there is
+    Sentry is a single-host tool reached over a loopback tunnel, so there is
     nothing to gain from caching and a great deal to lose: a stale app.js
     silently showing old rendering logic is indistinguishable from a bug.
     """
@@ -106,7 +106,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     state = AppState(cfg)
     init_db(cfg.db_path)
 
-    run_ingest = os.environ.get("SENTINEL_INGEST_IN_APP", "1").strip().lower() not in {
+    run_ingest = os.environ.get("SENTRY_INGEST_IN_APP", "1").strip().lower() not in {
         "0", "false", "no", "off",
     }
 
@@ -118,15 +118,15 @@ def create_app(config: Config | None = None) -> FastAPI:
                 target=state.ingestor.run_forever,
                 kwargs={"stop": state.stop_event.is_set},
                 daemon=True,
-                name="sentinel-ingest",
+                name="sentry-ingest",
             )
             state.worker.start()
             log.info("ingest worker started (every %ds)", cfg.poll_seconds)
         yield
         state.stop_event.set()
 
-    app = FastAPI(title="VPS Sentinel", version="1.0", lifespan=lifespan)
-    app.state.sentinel = state
+    app = FastAPI(title="VPS Sentry", version="1.0", lifespan=lifespan)
+    app.state.sentry = state
 
     # ---------------------------------------------------------------- alerts
     @app.get("/api/alerts")

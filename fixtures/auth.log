@@ -1,4 +1,4 @@
-# Reference sample of the auth.log line shapes Sentinel parses.
+# Reference sample of the auth.log line shapes Sentry parses.
 # Every line below is a real OpenSSH message format; the comments mark which
 # ones count toward the brute-force threshold and which are deliberately not.
 Aug 25 03:14:07 vps-fra1 sshd[28471]: Failed password for root from 45.148.10.92 port 51234 ssh2

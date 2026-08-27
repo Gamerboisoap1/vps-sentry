@@ -1,4 +1,4 @@
-"""Runtime configuration for Sentinel.
+"""Runtime configuration for Sentry.
 
 Every tunable lives here so the detection thresholds can be pointed at in a
 review and justified in one place. Environment variables override defaults,
@@ -45,11 +45,11 @@ class SSHRule:
     disagreeing for reasons nobody can explain.
     """
 
-    threshold: int = field(default_factory=lambda: _env_int("SENTINEL_SSH_THRESHOLD", 5))
-    window_seconds: int = field(default_factory=lambda: _env_int("SENTINEL_SSH_WINDOW", 600))
+    threshold: int = field(default_factory=lambda: _env_int("SENTRY_SSH_THRESHOLD", 5))
+    window_seconds: int = field(default_factory=lambda: _env_int("SENTRY_SSH_WINDOW", 600))
     # Suppression window. Without this a sustained brute force emits one alert
     # per log line; instead the open alert escalates in place.
-    cooldown_seconds: int = field(default_factory=lambda: _env_int("SENTINEL_SSH_COOLDOWN", 600))
+    cooldown_seconds: int = field(default_factory=lambda: _env_int("SENTRY_SSH_COOLDOWN", 600))
 
 
 @dataclass(frozen=True)
@@ -63,25 +63,25 @@ class ScanRule:
     log can show.
     """
 
-    distinct_ports: int = field(default_factory=lambda: _env_int("SENTINEL_SCAN_PORTS", 4))
-    window_seconds: int = field(default_factory=lambda: _env_int("SENTINEL_SCAN_WINDOW", 60))
-    cooldown_seconds: int = field(default_factory=lambda: _env_int("SENTINEL_SCAN_COOLDOWN", 300))
+    distinct_ports: int = field(default_factory=lambda: _env_int("SENTRY_SCAN_PORTS", 4))
+    window_seconds: int = field(default_factory=lambda: _env_int("SENTRY_SCAN_WINDOW", 60))
+    cooldown_seconds: int = field(default_factory=lambda: _env_int("SENTRY_SCAN_COOLDOWN", 300))
 
 
 @dataclass(frozen=True)
 class Config:
     # --- Inputs -----------------------------------------------------------
     auth_log: Path = field(
-        default_factory=lambda: Path(_env_str("SENTINEL_AUTH_LOG", "/var/log/auth.log"))
+        default_factory=lambda: Path(_env_str("SENTRY_AUTH_LOG", "/var/log/auth.log"))
     )
     ufw_log: Path = field(
-        default_factory=lambda: Path(_env_str("SENTINEL_UFW_LOG", "/var/log/ufw.log"))
+        default_factory=lambda: Path(_env_str("SENTRY_UFW_LOG", "/var/log/ufw.log"))
     )
 
     # --- Storage ----------------------------------------------------------
     db_path: Path = field(
         default_factory=lambda: Path(
-            _env_str("SENTINEL_DB", str(PROJECT_ROOT / "data" / "sentinel.db"))
+            _env_str("SENTRY_DB", str(PROJECT_ROOT / "data" / "sentry.db"))
         )
     )
 
@@ -92,26 +92,26 @@ class Config:
     # --- Enrichment -------------------------------------------------------
     geoip_db: Path = field(
         default_factory=lambda: Path(
-            _env_str("SENTINEL_GEOIP_DB", str(PROJECT_ROOT / "data" / "GeoLite2-Country.mmdb"))
+            _env_str("SENTRY_GEOIP_DB", str(PROJECT_ROOT / "data" / "GeoLite2-Country.mmdb"))
         )
     )
-    fail2ban_jail: str = field(default_factory=lambda: _env_str("SENTINEL_F2B_JAIL", "sshd"))
-    fail2ban_enabled: bool = field(default_factory=lambda: _env_bool("SENTINEL_F2B_ENABLED", True))
+    fail2ban_jail: str = field(default_factory=lambda: _env_str("SENTRY_F2B_JAIL", "sshd"))
+    fail2ban_enabled: bool = field(default_factory=lambda: _env_bool("SENTRY_F2B_ENABLED", True))
 
     # --- Ingest loop ------------------------------------------------------
-    poll_seconds: int = field(default_factory=lambda: _env_int("SENTINEL_POLL_SECONDS", 10))
+    poll_seconds: int = field(default_factory=lambda: _env_int("SENTRY_POLL_SECONDS", 10))
     # A monitor that silently stops reading is worse than no monitor, so the
     # dashboard flags staleness past this many seconds.
     stale_after_seconds: int = field(
-        default_factory=lambda: _env_int("SENTINEL_STALE_AFTER", 60)
+        default_factory=lambda: _env_int("SENTRY_STALE_AFTER", 60)
     )
-    retention_days: int = field(default_factory=lambda: _env_int("SENTINEL_RETENTION_DAYS", 30))
+    retention_days: int = field(default_factory=lambda: _env_int("SENTRY_RETENTION_DAYS", 30))
 
     # --- Server -----------------------------------------------------------
     # Loopback by default. Binding this to 0.0.0.0 would publish your log data
     # and an unauthenticated endpoint on the box you are trying to watch.
-    host: str = field(default_factory=lambda: _env_str("SENTINEL_HOST", "127.0.0.1"))
-    port: int = field(default_factory=lambda: _env_int("SENTINEL_PORT", 8787))
+    host: str = field(default_factory=lambda: _env_str("SENTRY_HOST", "127.0.0.1"))
+    port: int = field(default_factory=lambda: _env_int("SENTRY_PORT", 8787))
 
 
 def load_config() -> Config:

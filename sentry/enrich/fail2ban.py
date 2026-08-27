@@ -14,7 +14,7 @@ Two facts shape the implementation:
   *unknown*, which the dashboard renders distinctly from *not banned*.
 * Bans expire (stock ``bantime`` is 10 minutes). A live query therefore
   answers "is this IP banned **right now**", which is not the same question as
-  "was it banned when we detected it". Sentinel stores the answer at detection
+  "was it banned when we detected it". Sentry stores the answer at detection
   time and re-queries for the live view, and the dashboard shows both.
 """
 

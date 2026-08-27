@@ -4,22 +4,22 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from sentinel.api import create_app
-from sentinel.db import init_db
+from sentry.api import create_app
+from sentry.db import init_db
 from tests.conftest import (
     add_scan_event,
     add_scan_event_now,
     add_ssh_event,
     add_ssh_event_now,
 )
-from sentinel.db import connect
+from sentry.db import connect
 
 ATTACKER = "45.148.10.92"
 
 
 @pytest.fixture
 def client(config, monkeypatch):
-    monkeypatch.setenv("SENTINEL_INGEST_IN_APP", "0")  # no background worker in tests
+    monkeypatch.setenv("SENTRY_INGEST_IN_APP", "0")  # no background worker in tests
     init_db(config.db_path)
     with TestClient(create_app(config)) as c:
         yield c
@@ -42,7 +42,7 @@ def test_alerts_endpoint_empty_by_default(client):
 
 
 def test_alerts_endpoint_returns_detections(client, config, geoip, fail2ban):
-    from sentinel.detect import detect_ssh_bruteforce
+    from sentry.detect import detect_ssh_bruteforce
     seed(config)
     conn = connect(config.db_path)
     detect_ssh_bruteforce(conn, config, {ATTACKER}, geoip, fail2ban)
@@ -168,7 +168,7 @@ def test_threat_is_quiet_with_no_recent_alerts(client):
 
 def test_threat_escalates_with_active_alert_count(client, config, geoip, fail2ban):
     """Posture is a plain count, so it must move with the number of alerts."""
-    from sentinel.detect import detect_ssh_bruteforce
+    from sentry.detect import detect_ssh_bruteforce
 
     conn = connect(config.db_path)
     ips = [f"45.148.10.{n}" for n in range(1, 4)]
@@ -185,7 +185,7 @@ def test_threat_escalates_with_active_alert_count(client, config, geoip, fail2ba
 
 def test_scan_alert_ports_carry_service_names(client, config, geoip, fail2ban):
     """A scan report saying "27017" is data; saying "MongoDB" is intelligence."""
-    from sentinel.detect import detect_port_scan
+    from sentry.detect import detect_port_scan
 
     conn = connect(config.db_path)
     for port in (3306, 27017, 6379, 5432):

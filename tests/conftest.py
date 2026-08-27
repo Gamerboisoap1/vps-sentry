@@ -3,12 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from sentinel.config import Config, SSHRule, ScanRule
-from sentinel.db import connect, init_db, iso
-from sentinel.enrich.fail2ban import Fail2BanClient
-from sentinel.enrich.geoip import GeoIPResolver
+from sentry.config import Config, SSHRule, ScanRule
+from sentry.db import connect, init_db, iso
+from sentry.enrich.fail2ban import Fail2BanClient
+from sentry.enrich.geoip import GeoIPResolver
 
-BASE = datetime(2026, 8, 25, 12, 0, 0, tzinfo=timezone.utc)
+# Anchored just behind the current time, not to a fixed calendar date.
+# Anything asserting on a "recent activity" window (the threat posture counts
+# alerts active in the last 15 minutes) silently reads zero once a hardcoded
+# BASE drifts into the past, so the suite would pass only on the day it was
+# written.
+BASE = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=60)
 
 
 @pytest.fixture
@@ -16,7 +21,7 @@ def config(tmp_path: Path) -> Config:
     return Config(
         auth_log=tmp_path / "auth.log",
         ufw_log=tmp_path / "ufw.log",
-        db_path=tmp_path / "sentinel.db",
+        db_path=tmp_path / "sentry.db",
         geoip_db=tmp_path / "missing-geoip.mmdb",
         ssh=SSHRule(threshold=5, window_seconds=600, cooldown_seconds=600),
         scan=ScanRule(distinct_ports=4, window_seconds=60, cooldown_seconds=300),

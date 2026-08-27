@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run Sentinel against the generated demo logs instead of the real system logs.
+# Run Sentry against the generated demo logs instead of the real system logs.
 set -euo pipefail
 
 # A launcher may hand us a working directory we cannot resolve -- macOS keeps
@@ -13,14 +13,14 @@ if [ -z "$HERE" ]; then
 fi
 cd "$HERE"
 
-export SENTINEL_AUTH_LOG="${SENTINEL_AUTH_LOG:-$HERE/data/demo/auth.log}"
-export SENTINEL_UFW_LOG="${SENTINEL_UFW_LOG:-$HERE/data/demo/ufw.log}"
-export SENTINEL_POLL_SECONDS="${SENTINEL_POLL_SECONDS:-5}"
+export SENTRY_AUTH_LOG="${SENTRY_AUTH_LOG:-$HERE/data/demo/auth.log}"
+export SENTRY_UFW_LOG="${SENTRY_UFW_LOG:-$HERE/data/demo/ufw.log}"
+export SENTRY_POLL_SECONDS="${SENTRY_POLL_SECONDS:-5}"
 
-if [ ! -f "$SENTINEL_AUTH_LOG" ]; then
+if [ ! -f "$SENTRY_AUTH_LOG" ]; then
   echo "No demo logs yet -- generating them first."
   "$HERE/.venv/bin/python" -m tools.seed
 fi
 
-exec "$HERE/.venv/bin/python" -m uvicorn sentinel.api:app \
+exec "$HERE/.venv/bin/python" -m uvicorn sentry.api:app \
   --host 127.0.0.1 --port "${PORT:-8787}"

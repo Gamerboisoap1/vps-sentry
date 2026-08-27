@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from sentinel.timeparse import TimestampError, parse_timestamp
+from sentry.timeparse import TimestampError, parse_timestamp
 
 
 def test_bsd_syslog_uses_reference_year():

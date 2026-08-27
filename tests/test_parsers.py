@@ -1,8 +1,8 @@
 """Parser coverage for the sshd line variants that actually occur."""
 from datetime import datetime, timezone
 
-from sentinel.parsers import ssh, ufw
-from sentinel.parsers.ssh import COUNTING_KINDS
+from sentry.parsers import ssh, ufw
+from sentry.parsers.ssh import COUNTING_KINDS
 
 NOW = datetime(2026, 8, 25, 14, 0, 0, tzinfo=timezone.utc)
 HOST = "Aug 25 13:59:01 vps-fra1 "
