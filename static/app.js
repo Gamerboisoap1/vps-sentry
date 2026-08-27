@@ -470,7 +470,8 @@
     if (percent !== null && percent !== undefined) {
       var track = el('div', 'metric-track');
       var fill = el('div', 'metric-fill' + (percent >= 90 ? ' hot' : percent >= 75 ? ' warn' : ''));
-      fill.style.width = Math.max(0, Math.min(100, percent)) + '%';
+      // scaleX rather than width: the bar redraws on every poll.
+      fill.style.transform = 'scaleX(' + (Math.max(0, Math.min(100, percent)) / 100) + ')';
       track.appendChild(fill);
       wrap.appendChild(track);
     }

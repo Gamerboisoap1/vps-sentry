@@ -11,9 +11,11 @@
 </head>
 <body>
 
+<a class="skip-link" href="#content">Skip to dashboard</a>
+
 <header>
   <div class="shell head-row">
-    <div class="wordmark">VPS Sentry <span>/ security monitor</span></div>
+    <h1 class="wordmark">VPS Sentry <span>/ security monitor</span></h1>
 
     <div class="posture posture-0" id="posture" title="Alerts with activity in the last 15 minutes">
       <span class="bars"><i></i><i></i><i></i></span>
@@ -36,9 +38,10 @@
   <div class="shell" id="diagnostics-body"></div>
 </section>
 
-<main class="shell">
+<main class="shell" id="content">
 
-  <section class="stats" id="stats">
+  <section class="stats" id="stats" aria-labelledby="stats-heading">
+    <h2 class="visually-hidden" id="stats-heading">Summary</h2>
     <div class="stat"><div class="stat-value mono" id="stat-attackers">—</div><div class="stat-label">Unique sources</div></div>
     <div class="stat d-auth"><div class="stat-value mono" id="stat-ssh">—</div><div class="stat-label">SSH alerts</div></div>
     <div class="stat d-net"><div class="stat-value mono" id="stat-scan">—</div><div class="stat-label">Scan alerts</div></div>
@@ -54,7 +57,7 @@
        not earned. -->
   <section class="posture-row">
     <div class="score-block">
-      <div class="break-title">Security score</div>
+      <h2 class="break-title">Security score</h2>
       <div class="score-figure">
         <span class="score-value mono" id="score-value">--</span>
         <span class="score-out mono">/100</span>
@@ -65,7 +68,7 @@
     </div>
 
     <div class="health-block">
-      <div class="break-title">VPS health</div>
+      <h2 class="break-title">VPS health</h2>
       <div class="health-grid" id="health-grid"></div>
       <div class="health-foot" id="health-foot"></div>
     </div>
@@ -73,7 +76,7 @@
 
   <section class="timeline">
     <div class="tl-head">
-      <span class="tl-title">Activity · last 24h</span>
+      <h2 class="tl-title">Activity · last 24h</h2>
       <span class="tl-peak" id="tl-peak"></span>
       <span class="tl-legend">
         <span><i style="background:var(--auth)"></i>Failed auth</span>
@@ -87,7 +90,7 @@
   <section class="panels">
     <div class="panel panel-ssh">
       <div class="panel-head">
-        <span class="panel-title">SSH Brute Force</span>
+        <h2 class="panel-title">SSH Brute Force</h2>
         <span class="panel-rule" id="ssh-rule"></span>
         <span class="panel-count" id="ssh-count"></span>
       </div>
@@ -96,7 +99,7 @@
 
     <div class="panel panel-scan">
       <div class="panel-head">
-        <span class="panel-title">Network Scans</span>
+        <h2 class="panel-title">Network Scans</h2>
         <span class="panel-rule" id="scan-rule"></span>
         <span class="panel-count" id="scan-count"></span>
       </div>
@@ -110,7 +113,7 @@
        and be missing from the other. -->
   <section class="panel feed-panel">
     <div class="panel-head">
-      <span class="panel-title">Security Events</span>
+      <h2 class="panel-title">Security Events</h2>
       <span class="panel-rule">medium severity and above</span>
       <span class="panel-count" id="feed-count"></span>
     </div>
@@ -120,7 +123,7 @@
   <section class="panels two-up">
     <div class="panel">
       <div class="panel-head">
-        <span class="panel-title">Open Ports</span>
+        <h2 class="panel-title">Open Ports</h2>
         <span class="panel-rule" id="ports-rule"></span>
         <span class="panel-count" id="ports-count"></span>
       </div>
@@ -129,7 +132,7 @@
 
     <div class="panel">
       <div class="panel-head">
-        <span class="panel-title">System Users</span>
+        <h2 class="panel-title">System Users</h2>
         <span class="panel-rule">accounts able to log in over SSH</span>
         <span class="panel-count" id="users-count"></span>
       </div>
@@ -139,7 +142,7 @@
 
   <section class="panel log-panel">
     <div class="panel-head">
-      <span class="panel-title">Activity Log</span>
+      <h2 class="panel-title">Activity Log</h2>
       <span class="panel-rule">everything observed</span>
       <span class="panel-count" id="log-count"></span>
     </div>
@@ -152,15 +155,15 @@
 
   <section class="breakdown">
     <div class="break-col">
-      <div class="break-title">Targeted usernames</div>
+      <h2 class="break-title">Targeted usernames</h2>
       <div id="usernames"></div>
     </div>
     <div class="break-col">
-      <div class="break-title">Source countries</div>
+      <h2 class="break-title">Source countries</h2>
       <div id="countries"></div>
     </div>
     <div class="break-col">
-      <div class="break-title">Probed services · 24h</div>
+      <h2 class="break-title">Probed services · 24h</h2>
       <div id="ports"></div>
     </div>
   </section>
