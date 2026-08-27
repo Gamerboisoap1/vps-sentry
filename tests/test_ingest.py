@@ -104,17 +104,31 @@ def test_missing_log_is_reported_not_crashed(config):
     assert state is not None and state["last_error"] is not None
 
 
-def test_noise_lines_are_ignored(config):
+def test_non_ssh_noise_is_ignored(config):
+    """cron and sudo chatter shares the file but is none of our business."""
     config.auth_log.write_text(
         f"{syslog_stamp(30)} vps-fra1 CRON[123]: pam_unix(cron:session): session opened\n"
         f"{syslog_stamp(29)} vps-fra1 sudo:  deploy : TTY=pts/0 ; USER=root ; COMMAND=/bin/ls\n"
-        f"{syslog_stamp(28)} vps-fra1 sshd[1]: Accepted publickey for deploy from 10.0.0.9 port 5 ssh2\n"
+        f"{syslog_stamp(28)} vps-fra1 systemd-logind[812]: New session 214 of user deploy.\n"
     )
     config.ufw_log.write_text("")
     report = Ingestor(config).run_once()
     assert report.sources[0].lines_read == 3
     assert report.sources[0].events_stored == 0
     assert report.alerts_created == 0
+
+
+def test_successful_login_is_stored_but_raises_no_alert(config):
+    """A success is evidence worth keeping and must never trip a threshold."""
+    config.auth_log.write_text(
+        f"{syslog_stamp(28)} vps-fra1 sshd[1]: Accepted publickey for deploy "
+        f"from 10.0.0.9 port 5 ssh2\n"
+    )
+    config.ufw_log.write_text("")
+    report = Ingestor(config).run_once()
+    assert report.sources[0].events_stored == 1
+    assert report.alerts_created == 0
+    assert report.logins_recorded == 1
 
 
 def test_rotation_between_cycles_keeps_ingesting(config):
@@ -130,3 +144,101 @@ def test_rotation_between_cycles_keeps_ingesting(config):
     assert second.sources[0].rotated is True
     assert second.sources[0].events_stored == 6
     assert second.alerts_created == 1
+
+
+def login_line(seconds_ago: int, user: str, ip: str, method: str = "password") -> str:
+    return (
+        f"{syslog_stamp(seconds_ago)} vps-fra1 sshd[28903]: "
+        f"Accepted {method} for {user} from {ip} port 51890 ssh2\n"
+    )
+
+
+def _events(config, kind=None):
+    conn = connect(config.db_path)
+    sql = "SELECT * FROM events" + (" WHERE kind = ?" if kind else "")
+    rows = conn.execute(sql, (kind,) if kind else ()).fetchall()
+    conn.close()
+    return rows
+
+
+def test_successful_login_from_a_clean_ip_is_routine(config):
+    config.auth_log.write_text(login_line(30, "deploy", "82.14.203.66", "publickey"))
+    config.ufw_log.write_text("")
+    Ingestor(config).run_once()
+
+    rows = _events(config, "SSH_LOGIN")
+    assert len(rows) == 1
+    assert rows[0]["severity"] == "info"
+    assert _events(config, "SSH_LOGIN_AFTER_ATTACK") == []
+
+
+def test_login_from_an_attacking_ip_is_critical(config):
+    """The sequence that matters: the brute force stopped because it worked.
+
+    Regression test for an ordering bug -- login classification has to run
+    *after* detection, because on a first ingest the alert that makes this
+    login significant is created in the very same cycle.
+    """
+    lines = [ssh_line(120 - i * 5) for i in range(8)]        # brute force
+    lines.append(login_line(30, "root", ATTACKER))            # then it succeeds
+    config.auth_log.write_text("".join(lines))
+    config.ufw_log.write_text("")
+
+    report = Ingestor(config).run_once()
+    assert report.alerts_created == 1
+
+    routine = _events(config, "SSH_LOGIN")
+    breach = _events(config, "SSH_LOGIN_AFTER_ATTACK")
+    assert routine == [], "the login must not be filed as ordinary"
+    assert len(breach) == 1
+    assert breach[0]["severity"] == "critical"
+    assert breach[0]["ip"] == ATTACKER
+
+
+def test_detected_alerts_emit_one_event_each(config):
+    config.auth_log.write_text("".join(ssh_line(60 - i * 5) for i in range(6)))
+    config.ufw_log.write_text("")
+    ingestor = Ingestor(config)
+    ingestor.run_once()
+
+    assert len(_events(config, "SSH_BRUTE_FORCE")) == 1
+
+    # A second cycle escalates the same incident; the feed must not gain a
+    # duplicate entry for it.
+    with config.auth_log.open("a") as fh:
+        fh.writelines(ssh_line(20 - i) for i in range(5))
+    ingestor.run_once()
+    assert len(_events(config, "SSH_BRUTE_FORCE")) == 1
+
+
+def test_unreadable_log_raises_a_system_event(config):
+    config.ufw_log.write_text("")
+    Ingestor(config).run_once()
+    rows = _events(config, "SOURCE_UNREADABLE")
+    assert len(rows) == 1
+    assert rows[0]["severity"] == "high"
+    assert "ssh" in rows[0]["subject"]
+
+
+def test_host_sample_is_recorded_each_cycle(config):
+    config.auth_log.write_text("")
+    config.ufw_log.write_text("")
+    report = Ingestor(config).run_once()
+    assert report.host_sampled is True
+
+    conn = connect(config.db_path)
+    rows = conn.execute("SELECT * FROM host_samples").fetchall()
+    conn.close()
+    assert len(rows) == 1
+
+
+def test_first_port_sync_records_a_baseline_without_flooding(config):
+    """Every existing listener is not "new"; emitting them all would bury the feed."""
+    config.auth_log.write_text("")
+    config.ufw_log.write_text("")
+    report = Ingestor(config).run_once()
+
+    assert report.ports_opened == 0
+    new_port_events = _events(config, "NEW_PORT")
+    assert new_port_events == []
+    assert len(_events(config, "MONITOR_START")) <= 1

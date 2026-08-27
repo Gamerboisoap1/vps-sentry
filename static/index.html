@@ -48,6 +48,29 @@
 
   <!-- Hourly buckets rather than a running average: a brute force is a burst,
        and averaging is exactly what hides one. -->
+
+  <!-- Score and host condition. The score is deliberately shown with its
+       deductions beside it: a number nobody can explain invites trust it has
+       not earned. -->
+  <section class="posture-row">
+    <div class="score-block">
+      <div class="break-title">Security score</div>
+      <div class="score-figure">
+        <span class="score-value mono" id="score-value">--</span>
+        <span class="score-out mono">/100</span>
+        <span class="score-band" id="score-band"></span>
+      </div>
+      <div class="score-caption" id="score-caption">VPS Sentry's own risk indicator, not a measure of how secure the host is.</div>
+      <div class="score-deductions" id="score-deductions"></div>
+    </div>
+
+    <div class="health-block">
+      <div class="break-title">VPS health</div>
+      <div class="health-grid" id="health-grid"></div>
+      <div class="health-foot" id="health-foot"></div>
+    </div>
+  </section>
+
   <section class="timeline">
     <div class="tl-head">
       <span class="tl-title">Activity · last 24h</span>
@@ -79,6 +102,52 @@
       </div>
       <div class="rows" id="scan-rows"></div>
     </div>
+  </section>
+
+
+  <!-- Security Events: the high-severity slice of the same table the Activity
+       Log reads in full. One store, two views, so nothing can appear in one
+       and be missing from the other. -->
+  <section class="panel feed-panel">
+    <div class="panel-head">
+      <span class="panel-title">Security Events</span>
+      <span class="panel-rule">medium severity and above</span>
+      <span class="panel-count" id="feed-count"></span>
+    </div>
+    <div class="rows" id="feed-rows"></div>
+  </section>
+
+  <section class="panels two-up">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Open Ports</span>
+        <span class="panel-rule" id="ports-rule"></span>
+        <span class="panel-count" id="ports-count"></span>
+      </div>
+      <div class="rows" id="ports-rows"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">System Users</span>
+        <span class="panel-rule">accounts able to log in over SSH</span>
+        <span class="panel-count" id="users-count"></span>
+      </div>
+      <div class="rows" id="users-rows"></div>
+    </div>
+  </section>
+
+  <section class="panel log-panel">
+    <div class="panel-head">
+      <span class="panel-title">Activity Log</span>
+      <span class="panel-rule">everything observed</span>
+      <span class="panel-count" id="log-count"></span>
+    </div>
+    <div class="log-controls">
+      <div class="filters" id="log-filters" role="group" aria-label="Filter activity by category"></div>
+      <input type="search" id="log-search" class="log-search" placeholder="Filter by IP, user or text" aria-label="Search activity log">
+    </div>
+    <div class="rows" id="log-rows"></div>
   </section>
 
   <section class="breakdown">

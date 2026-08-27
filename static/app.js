@@ -392,6 +392,274 @@
     }));
   }
 
+
+  // ======================================================================
+  // Score, health, event feed, ports, users, activity log
+  // ======================================================================
+
+  var logFilter = 'all';
+  var logSearch = '';
+  var searchTimer = null;
+
+  function bytes(n) {
+    if (n === null || n === undefined) { return '--'; }
+    var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var i = 0, v = n;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return (v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)) + ' ' + units[i];
+  }
+
+  function rate(bps) {
+    return bps === null || bps === undefined ? '--' : bytes(bps) + '/s';
+  }
+
+  function clockTime(iso) {
+    if (!iso) { return '--:--'; }
+    var d = new Date(iso);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  // -- score --------------------------------------------------------------
+  function renderScore(score) {
+    document.getElementById('score-value').textContent = score.value;
+    var band = document.getElementById('score-band');
+    band.textContent = score.band;
+    band.className = 'score-band band-' + score.band;
+
+    var box = document.getElementById('score-deductions');
+    clear(box);
+
+    if (!score.deductions.length && !score.unknowns.length) {
+      box.appendChild(el('div', 'score-unknown', 'No deductions applied.'));
+      return;
+    }
+
+    score.deductions.forEach(function (d) {
+      var row = el('div', 'deduction');
+      row.appendChild(el('div', 'deduction-pts', '-' + d.points));
+      var text = el('div', 'deduction-text');
+      text.appendChild(el('span', 'deduction-rule', d.rule.replace(/_/g, ' ')));
+      text.appendChild(document.createTextNode(d.detail));
+      row.appendChild(text);
+      box.appendChild(row);
+    });
+
+    // Rules we could not evaluate are listed rather than silently skipped:
+    // a score of 100 that simply failed to measure anything would mislead.
+    score.unknowns.forEach(function (u) {
+      var row = el('div', 'deduction');
+      row.appendChild(el('div', 'deduction-pts', '--'));
+      var text = el('div', 'deduction-text');
+      text.appendChild(el('span', 'deduction-rule', 'not assessed'));
+      text.appendChild(document.createTextNode(u));
+      row.appendChild(text);
+      box.appendChild(row);
+    });
+  }
+
+  // -- host health --------------------------------------------------------
+  function metric(label, valueText, subText, percent) {
+    var wrap = el('div', 'metric');
+    var head = el('div', 'metric-head');
+    head.appendChild(el('span', 'metric-label', label));
+    head.appendChild(el('span', 'metric-value', valueText));
+    wrap.appendChild(head);
+
+    if (subText) { wrap.appendChild(el('div', 'metric-sub', subText)); }
+
+    if (percent !== null && percent !== undefined) {
+      var track = el('div', 'metric-track');
+      var fill = el('div', 'metric-fill' + (percent >= 90 ? ' hot' : percent >= 75 ? ' warn' : ''));
+      fill.style.width = Math.max(0, Math.min(100, percent)) + '%';
+      track.appendChild(fill);
+      wrap.appendChild(track);
+    }
+    return wrap;
+  }
+
+  function renderHost(host) {
+    var grid = document.getElementById('health-grid');
+    var foot = document.getElementById('health-foot');
+    clear(grid);
+
+    if (!host.available) {
+      grid.appendChild(emptyState('No sample yet', host.reason || 'The collector has not run.'));
+      foot.textContent = host.status || '';
+      return;
+    }
+
+    // CPU is a rate, so the first cycle after start genuinely has no value.
+    grid.appendChild(metric(
+      'CPU',
+      host.cpu_percent === null ? 'measuring' : host.cpu_percent + '%',
+      host.load1 !== null ? 'load ' + host.load1 : null,
+      host.cpu_percent
+    ));
+    grid.appendChild(metric(
+      'RAM',
+      host.mem_percent === null ? '--' : host.mem_percent + '%',
+      host.mem_used !== null ? bytes(host.mem_used) + ' of ' + bytes(host.mem_total) : null,
+      host.mem_percent
+    ));
+    grid.appendChild(metric(
+      'Disk',
+      host.disk_percent === null ? '--' : host.disk_percent + '%',
+      host.disk_used !== null ? bytes(host.disk_used) + ' of ' + bytes(host.disk_total) : null,
+      host.disk_percent
+    ));
+    grid.appendChild(metric(
+      'Network',
+      rate(host.net_rx_bps),
+      'up ' + rate(host.net_tx_bps),
+      null
+    ));
+    grid.appendChild(metric('Uptime', host.uptime_human || '--', null, null));
+
+    foot.textContent = host.status || '';
+  }
+
+  // -- event rows ---------------------------------------------------------
+  function eventRow(event) {
+    var row = el('div', 'event-row ev-' + event.severity);
+    row.appendChild(el('div', 'event-time mono', clockTime(event.ts)));
+
+    var label = el('div', 'event-label');
+    label.appendChild(document.createTextNode(event.label + '  '));
+    label.appendChild(el('span', 'ev-tag', event.severity));
+    row.appendChild(label);
+
+    row.appendChild(el('div', 'event-ip', event.ip || ''));
+    row.appendChild(el('div', 'event-desc', event.description));
+    row.title = event.ts;
+    return row;
+  }
+
+  function renderFeed(body) {
+    var rows = document.getElementById('feed-rows');
+    clear(rows);
+    var list = body.events || [];
+    document.getElementById('feed-count').textContent = list.length ? list.length + ' events' : '';
+
+    if (!list.length) {
+      rows.appendChild(emptyState(
+        'Nothing above routine',
+        'No event has reached medium severity. Detections, new listening ports ' +
+        'and logins from attacking addresses all surface here first.'
+      ));
+      return;
+    }
+    list.forEach(function (e) { rows.appendChild(eventRow(e)); });
+  }
+
+  // -- ports --------------------------------------------------------------
+  function renderPorts(body) {
+    var rows = document.getElementById('ports-rows');
+    clear(rows);
+    document.getElementById('ports-rule').textContent =
+      body.count ? body.public_count + ' reachable from outside' : '';
+    document.getElementById('ports-count').textContent = body.count ? body.count + ' listening' : '';
+
+    if (!body.ports || !body.ports.length) {
+      rows.appendChild(emptyState('No listening sockets found', body.status || ''));
+      return;
+    }
+
+    body.ports.forEach(function (p) {
+      var row = el('div', 'pu-row');
+      row.appendChild(el('div', 'pu-port', p.port + '/' + p.proto));
+      row.appendChild(el('div', 'pu-name', p.service));
+      row.appendChild(el('span', 'tag tag-' + p.exposure, p.exposure));
+      var meta = el('div', 'pu-meta');
+      meta.textContent = p.address + (p.process ? '  ' + p.process : '');
+      row.appendChild(meta);
+      row.title = p.first_seen ? 'First seen ' + p.first_seen : 'Not yet recorded in port history';
+      rows.appendChild(row);
+    });
+  }
+
+  // -- users --------------------------------------------------------------
+  function renderUsers(body) {
+    var rows = document.getElementById('users-rows');
+    clear(rows);
+    document.getElementById('users-count').textContent =
+      body.count ? body.ssh_capable + ' of ' + body.count + ' can SSH' : '';
+
+    var list = (body.users || []).filter(function (u) { return u.ssh_access !== 'no'; });
+    if (!list.length) {
+      rows.appendChild(emptyState(
+        'No account can log in over SSH',
+        (body.users || []).length
+          ? 'Every account has a nologin shell or is denied by sshd policy.'
+          : (body.status || 'Account list unavailable.')
+      ));
+      return;
+    }
+
+    list.forEach(function (u) {
+      var row = el('div', 'pu-row');
+      row.appendChild(el('div', 'pu-port', 'uid ' + u.uid));
+      row.appendChild(el('div', 'pu-name', u.username));
+      row.appendChild(el('span', 'tag tag-' + u.ssh_access,
+        u.ssh_access === 'yes' ? 'ssh' : u.ssh_access));
+      var meta = el('div', 'pu-meta');
+      meta.textContent = (u.kind === 'root' ? 'root  ' : '') + u.reasons.join('; ');
+      row.appendChild(meta);
+      rows.appendChild(row);
+    });
+  }
+
+  // -- activity log -------------------------------------------------------
+  function renderFilters(counts) {
+    var box = document.getElementById('log-filters');
+    clear(box);
+    [['all', 'All'], ['ssh', 'SSH'], ['network', 'Network'], ['system', 'System']]
+      .forEach(function (pair) {
+        var key = pair[0];
+        var btn = el('button', 'filter-btn', pair[1]);
+        btn.type = 'button';
+        btn.setAttribute('aria-pressed', String(logFilter === key));
+        var n = counts[key];
+        if (n !== undefined) { btn.appendChild(el('span', 'n', n)); }
+        btn.addEventListener('click', function () {
+          logFilter = key;
+          refresh();
+        });
+        box.appendChild(btn);
+      });
+  }
+
+  function renderLog(body) {
+    var rows = document.getElementById('log-rows');
+    clear(rows);
+    var list = body.events || [];
+    document.getElementById('log-count').textContent = list.length ? list.length + ' entries' : '';
+    renderFilters(body.category_counts || {});
+
+    if (!list.length) {
+      rows.appendChild(emptyState(
+        logSearch ? 'No entries match' : 'Nothing recorded yet',
+        logSearch
+          ? 'Nothing in the log matches that filter.'
+          : 'The log fills as the monitor observes activity.'
+      ));
+      return;
+    }
+    list.forEach(function (e) { rows.appendChild(eventRow(e)); });
+  }
+
+  var searchBox = document.getElementById('log-search');
+  if (searchBox) {
+    searchBox.addEventListener('input', function () {
+      // Debounced: refetching on every keystroke would hammer the API for a
+      // query the user has not finished typing.
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(function () {
+        logSearch = searchBox.value.trim();
+        refresh();
+      }, 250);
+    });
+  }
+
   // ------------------------------------------------------------------ poll
 
   function markUnreachable(error) {
@@ -407,14 +675,39 @@
     ]]);
   }
 
+  var cycle = 0;
+  var SLOW_EVERY = 6;   // ports/users/score refresh roughly every 30s
+
   function refresh() {
+    var slow = (cycle % SLOW_EVERY) === 0;
+    cycle++;
+
+    var logQuery = '/api/events?limit=120'
+      + (logFilter !== 'all' ? '&category=' + encodeURIComponent(logFilter) : '')
+      + (logSearch ? '&search=' + encodeURIComponent(logSearch) : '');
+
     Promise.all([
       fetch('/api/health').then(function (r) { return r.json(); }),
       fetch('/api/alerts?limit=200').then(function (r) { return r.json(); }),
       fetch('/api/stats').then(function (r) { return r.json(); }),
-      fetch('/api/timeline?hours=24').then(function (r) { return r.json(); })
+      fetch('/api/timeline?hours=24').then(function (r) { return r.json(); }),
+      fetch('/api/events?limit=60&min_severity=medium').then(function (r) { return r.json(); }),
+      fetch(logQuery).then(function (r) { return r.json(); }),
+      fetch('/api/host').then(function (r) { return r.json(); }),
+      slow ? fetch('/api/score').then(function (r) { return r.json(); }) : Promise.resolve(null),
+      slow ? fetch('/api/ports').then(function (r) { return r.json(); }) : Promise.resolve(null),
+      slow ? fetch('/api/users').then(function (r) { return r.json(); }) : Promise.resolve(null)
     ]).then(function (results) {
       var health = results[0], alertBody = results[1], stats = results[2], timeline = results[3];
+      var feed = results[4], log = results[5], host = results[6];
+      var score = results[7], portsBody = results[8], usersBody = results[9];
+
+      renderFeed(feed);
+      renderLog(log);
+      renderHost(host);
+      if (score) { renderScore(score); }
+      if (portsBody) { renderPorts(portsBody); }
+      if (usersBody) { renderUsers(usersBody); }
 
       renderHealth(health);
       renderStats(stats);

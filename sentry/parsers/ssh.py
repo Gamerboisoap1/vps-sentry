@@ -69,6 +69,17 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "invalid_user",
         re.compile(r"Invalid user (?P<user>\S+) from " + _IP),
     ),
+    # Accepted publickey for deploy from 1.2.3.4 port 5 ssh2: ED25519 SHA256:...
+    # A success, so emphatically not a counting kind -- but recorded, because a
+    # successful login from an address that was failing seconds ago is the most
+    # consequential line the log can contain.
+    (
+        "accepted_login",
+        re.compile(
+            r"Accepted (?P<method>password|publickey|keyboard-interactive(?:/pam)?) "
+            r"for (?P<user>\S+) from " + _IP + r" port \d+"
+        ),
+    ),
 )
 
 # Only inspect lines emitted by the SSH daemon.
@@ -93,10 +104,13 @@ def parse_line(line: str, *, now: datetime | None = None) -> dict[str, Any] | No
         # sshd renders an unparsable username as "*" or an empty token.
         if username in {"*", "-", ""}:
             username = None
-        return {
+        event = {
             "ts": timestamp,
             "ip": match.group("ip"),
             "username": username,
             "kind": kind,
         }
+        if "method" in match.groupdict():
+            event["method"] = match.group("method")
+        return event
     return None

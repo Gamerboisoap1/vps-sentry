@@ -198,3 +198,111 @@ def test_scan_alert_ports_carry_service_names(client, config, geoip, fail2ban):
     assert services[27017] == "MongoDB"
     assert services[3306] == "MySQL"
     assert all(e["category"] == "database" for e in alert["detail"]["port_services"])
+
+
+# ------------------------------------------------- events / host / ports ----
+
+def seed_events(config):
+    from sentry import events as ev
+    conn = connect(config.db_path)
+    ev.emit(conn, "SSH_LOGIN_AFTER_ATTACK", "root logged in from 45.148.10.92",
+            ip="45.148.10.92", subject="root")
+    ev.emit(conn, "SSH_BRUTE_FORCE", "61 failed authentications", ip="45.148.10.92")
+    ev.emit(conn, "PORT_SCAN", "10 distinct ports probed", ip="193.34.76.15")
+    ev.emit(conn, "SSH_LOGIN", "deploy logged in", ip="82.14.203.66", subject="deploy")
+    ev.emit(conn, "MONITOR_START", "baseline recorded")
+    conn.commit(); conn.close()
+
+
+def test_events_endpoint_returns_the_full_feed(client, config):
+    seed_events(config)
+    body = client.get("/api/events").json()
+    assert body["count"] == 5
+    assert body["category_counts"] == {"ssh": 3, "network": 1, "system": 1, "all": 5}
+
+
+def test_security_events_view_excludes_routine_entries(client, config):
+    """Same table as the activity log, filtered -- not a separate store."""
+    seed_events(config)
+    security = client.get("/api/events", params={"min_severity": "medium"}).json()
+    activity = client.get("/api/events").json()
+    assert security["count"] == 3
+    assert activity["count"] == 5
+    assert all(e["severity"] in {"critical", "high", "medium"} for e in security["events"])
+
+
+def test_events_category_filter(client, config):
+    seed_events(config)
+    body = client.get("/api/events", params={"category": "network"}).json()
+    assert body["count"] == 1
+    assert body["events"][0]["kind"] == "PORT_SCAN"
+
+
+def test_events_search_finds_an_ip_across_kinds(client, config):
+    seed_events(config)
+    body = client.get("/api/events", params={"search": "45.148.10.92"}).json()
+    kinds = {e["kind"] for e in body["events"]}
+    assert kinds == {"SSH_LOGIN_AFTER_ATTACK", "SSH_BRUTE_FORCE"}
+
+
+def test_events_rejects_unknown_filter_values(client):
+    assert client.get("/api/events", params={"category": "'; DROP TABLE events--"}).status_code == 422
+    assert client.get("/api/events", params={"min_severity": "catastrophic"}).status_code == 422
+    assert client.get("/api/events", params={"limit": 9999}).status_code == 422
+
+
+def test_host_endpoint_reports_absence_before_first_sample(client):
+    body = client.get("/api/host").json()
+    assert body["available"] is False
+    assert "reason" in body
+
+
+def test_host_endpoint_returns_a_recorded_sample(client, config):
+    conn = connect(config.db_path)
+    conn.execute(
+        "INSERT INTO host_samples (ts, cpu_percent, mem_percent, mem_total, mem_used,"
+        " disk_percent, disk_total, disk_used, uptime_secs, load1)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        ("2026-08-27T10:00:00+00:00", 24.0, 58.0, 8 * 10**9, 4 * 10**9,
+         41.0, 500 * 10**9, 205 * 10**9, 604800, 1.2),
+    )
+    conn.commit(); conn.close()
+
+    body = client.get("/api/host").json()
+    assert body["available"] is True
+    assert body["cpu_percent"] == 24.0
+    assert body["mem_percent"] == 58.0
+    assert body["uptime_human"] == "7d 0h"
+
+
+def test_ports_endpoint_shape(client):
+    body = client.get("/api/ports").json()
+    assert "ports" in body and "public_count" in body and "status" in body
+    for entry in body["ports"]:
+        assert entry["exposure"] in {"public", "loopback", "private"}
+        assert isinstance(entry["port"], int)
+
+
+def test_users_endpoint_shape(client):
+    body = client.get("/api/users").json()
+    assert "users" in body and "policy" in body
+    assert body["ssh_capable"] <= body["count"]
+    for account in body["users"]:
+        assert account["ssh_access"] in {"yes", "no", "unknown"}
+
+
+def test_score_endpoint_shows_its_working(client):
+    body = client.get("/api/score").json()
+    assert 0 <= body["value"] <= 100
+    assert body["band"] in {"good", "fair", "weak", "poor"}
+    assert body["caption"].startswith("VPS Sentry Security Score:")
+    # Every deduction must arrive with a reason attached.
+    for d in body["deductions"]:
+        assert d["rule"] and d["detail"] and d["points"] > 0
+    assert body["base"] == 100
+
+
+def test_score_arithmetic_matches_its_deductions(client):
+    body = client.get("/api/score").json()
+    expected = max(0, 100 - sum(d["points"] for d in body["deductions"]))
+    assert body["value"] == expected

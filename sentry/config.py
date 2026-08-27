@@ -100,6 +100,19 @@ class Config:
 
     # --- Ingest loop ------------------------------------------------------
     poll_seconds: int = field(default_factory=lambda: _env_int("SENTRY_POLL_SECONDS", 10))
+
+    # --- Host collectors --------------------------------------------------
+    # Each can be switched off independently; a VPS where /proc is restricted
+    # or lsof is absent should still run the log detectors.
+    collect_host: bool = field(default_factory=lambda: _env_bool("SENTRY_COLLECT_HOST", True))
+    collect_ports: bool = field(default_factory=lambda: _env_bool("SENTRY_COLLECT_PORTS", True))
+    collect_users: bool = field(default_factory=lambda: _env_bool("SENTRY_COLLECT_USERS", True))
+    disk_path: str = field(default_factory=lambda: _env_str("SENTRY_DISK_PATH", "/"))
+    # Host samples are for a short trend line, not history; kept far shorter
+    # than event retention so the table cannot dominate the database.
+    host_sample_retention_hours: int = field(
+        default_factory=lambda: _env_int("SENTRY_HOST_RETENTION_HOURS", 48)
+    )
     # A monitor that silently stops reading is worse than no monitor, so the
     # dashboard flags staleness past this many seconds.
     stale_after_seconds: int = field(

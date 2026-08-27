@@ -76,6 +76,56 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_kind_seen ON alerts (kind, last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_ip        ON alerts (ip);
+
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY,
+    ts          TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    category    TEXT NOT NULL,
+    severity    TEXT NOT NULL,
+    ip          TEXT,
+    subject     TEXT,
+    description TEXT NOT NULL,
+    detail      TEXT,
+    -- Nullable and UNIQUE: SQLite permits many NULLs, so events that have no
+    -- natural identity simply omit it while repeatable ones stay idempotent.
+    dedupe_key  TEXT UNIQUE
+);
+CREATE INDEX IF NOT EXISTS idx_events_ts       ON events (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_cat_ts   ON events (category, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_sev_ts   ON events (severity, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_ip       ON events (ip);
+
+-- Known listening sockets. A port absent from here is by definition new, which
+-- is what turns a plain inventory into a change detector.
+CREATE TABLE IF NOT EXISTS port_state (
+    proto      TEXT    NOT NULL,
+    port       INTEGER NOT NULL,
+    address    TEXT,
+    process    TEXT,
+    first_seen TEXT    NOT NULL,
+    last_seen  TEXT    NOT NULL,
+    PRIMARY KEY (proto, port)
+);
+
+-- Point-in-time host metrics. Kept short (see prune) purely to draw a trend;
+-- the dashboard reads the newest row for its current figures.
+CREATE TABLE IF NOT EXISTS host_samples (
+    id           INTEGER PRIMARY KEY,
+    ts           TEXT NOT NULL,
+    cpu_percent  REAL,
+    mem_percent  REAL,
+    mem_total    INTEGER,
+    mem_used     INTEGER,
+    disk_percent REAL,
+    disk_total   INTEGER,
+    disk_used    INTEGER,
+    net_rx_bps   REAL,
+    net_tx_bps   REAL,
+    uptime_secs  INTEGER,
+    load1        REAL
+);
+CREATE INDEX IF NOT EXISTS idx_host_ts ON host_samples (ts DESC);
 """
 
 
@@ -295,6 +345,7 @@ def prune(db_path: Path, retention_days: int) -> dict[str, int]:
             ("ssh_events", "ts"),
             ("scan_events", "ts"),
             ("alerts", "last_seen"),
+            ("events", "ts"),
         ):
             cur = conn.execute(f"DELETE FROM {table} WHERE {column} < ?", (cutoff,))
             removed[table] = cur.rowcount

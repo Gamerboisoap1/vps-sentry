@@ -70,8 +70,20 @@ def test_max_auth_attempts_is_counted():
     assert ev["kind"] == "max_auth_attempts"
 
 
-def test_successful_login_is_ignored():
-    assert parse_ssh("sshd[100]: Accepted publickey for deploy from 10.0.0.9 port 5 ssh2") is None
+def test_successful_login_is_parsed_but_never_counted():
+    """A success must be recorded and must never move a failure threshold."""
+    ev = parse_ssh("sshd[100]: Accepted publickey for deploy from 10.0.0.9 port 5 ssh2")
+    assert ev["kind"] == "accepted_login"
+    assert ev["kind"] not in COUNTING_KINDS
+    assert ev["username"] == "deploy"
+    assert ev["method"] == "publickey"
+
+
+def test_accepted_password_login_is_parsed():
+    ev = parse_ssh("sshd[100]: Accepted password for kunal from 45.148.10.92 port 51234 ssh2")
+    assert ev["kind"] == "accepted_login"
+    assert ev["method"] == "password"
+    assert ev["ip"] == "45.148.10.92"
 
 
 def test_non_sshd_lines_ignored():

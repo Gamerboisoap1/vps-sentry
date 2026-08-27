@@ -54,6 +54,81 @@ source, a daemon, or an inbound port.
 
 ---
 
+## What else it shows
+
+Everything below reuses data the host already publishes. No agent is
+installed, nothing new listens, and each collector can be switched off
+independently.
+
+**Security Events and Activity Log** are two views of one table. The Activity
+Log is everything observed; Security Events is the same rows filtered to
+medium severity and above. Keeping one store means an event cannot appear in
+one view and be missing from the other. The log filters by category
+(SSH / Network / System) and searches across IP, username and description.
+
+**VPS health** — CPU, memory, disk, network throughput and uptime, read from
+`/proc/stat`, `/proc/meminfo`, `statvfs` and `/proc/net/dev`. Memory uses
+`MemAvailable` rather than `MemFree`, which is why it does not report 95% on
+an idle box with a warm page cache. CPU is a rate, so the first cycle after
+startup reports nothing rather than a fabricated figure.
+
+**Open ports** — listening sockets from `/proc/net/tcp[6]` and `/proc/net/udp[6]`,
+named through the same service table the scan detector uses. Each is
+classified by exposure, because a service bound to `127.0.0.1` is not
+reachable from the internet and calling it "open" would be alarming and
+wrong. A port that appears when it was not there before raises a `NEW_PORT`
+event; the first run records a baseline instead of announcing every existing
+listener at once.
+
+**System users** — accounts from `/etc/passwd`, resolved against the effective
+sshd policy: `AllowUsers`, `AllowGroups`, `DenyUsers`, `PermitRootLogin`,
+`PasswordAuthentication` and the presence of `authorized_keys`. The question
+answered is not "who exists" but "who can actually log in", which is a
+different and smaller set. Strictly read-only.
+
+**Security score** — a plain sum of named deductions from a base of 100,
+returned together with every deduction so the dashboard can show its working.
+A rule whose input is unavailable does not deduct; it is listed as not
+assessed, because penalising the operator for something we could not measure
+would drift the score down on hardened hosts that merely deny us a reading.
+
+Phrase it as *VPS Sentry Security Score: 87/100*, never "your VPS is 87%
+secure". The first is this tool's own indicator; the second is a claim about
+reality that a rule set this size cannot support.
+
+### The one signal worth waking up for
+
+A successful SSH login is ordinarily filed as routine `info`. A successful
+login from an address that tripped an alert within the last hour is filed as
+`SSH_LOGIN_AFTER_ATTACK` at `critical`, and costs 25 points of score. That is
+the brute force stopping because it worked, and it is the sequence this whole
+tool exists to catch.
+
+Classification deliberately runs *after* detection in the ingest cycle: on a
+first ingest the alert that makes the login significant is created in that
+same cycle, so running earlier would file the breach as an ordinary login.
+
+## Additional endpoints
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /api/events` | Unified feed; `category`, `min_severity`, `search`, `limit` |
+| `GET /api/host` | Latest host sample plus a short trend |
+| `GET /api/ports` | Live listening sockets with exposure |
+| `GET /api/users` | Accounts and effective SSH policy |
+| `GET /api/score` | Score, band, and every deduction |
+
+## Additional configuration
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SENTRY_COLLECT_HOST` | `1` | Sample CPU/memory/disk/network |
+| `SENTRY_COLLECT_PORTS` | `1` | Enumerate listening sockets |
+| `SENTRY_COLLECT_USERS` | `1` | Read account list and sshd policy |
+| `SENTRY_DISK_PATH` | `/` | Filesystem to report usage for |
+| `SENTRY_HOST_RETENTION_HOURS` | `48` | Host-sample retention |
+
+
 ## Quick start
 
 ```bash
@@ -155,6 +230,15 @@ protect, which would undo the whole point.
    blocked packets.
 3. **Can the process read the logs?** Both files are normally `root:adm`.
    Either run Sentry as a user in the `adm` group, or run it as root.
+
+### A note on platform
+
+The host, port and user collectors are written for Linux and read /proc
+directly. They also run on macOS so the dashboard can be developed and
+demonstrated on a laptop, with two honest downgrades: CPU is derived from load
+average (and says so on screen), and listening sockets come from `lsof`.
+Anywhere else, each collector reports itself unsupported and the log detectors
+carry on unaffected.
 
 ### Optional enrichment
 

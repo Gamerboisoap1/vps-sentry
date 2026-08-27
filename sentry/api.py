@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import sqlite3
+from types import SimpleNamespace
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,10 @@ from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import events as events_store
+from . import score as score_module
+from .collect import firewall, ports as ports_collect, users as users_collect
+from .collect.host import HostCollector, format_uptime
 from .config import Config, load_config
 from .db import connect, init_db, iso, utcnow
 from .detect import PORT_SCAN, SSH_BRUTEFORCE
@@ -57,6 +62,9 @@ class AppState:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.geoip = GeoIPResolver(config.geoip_db)
+        # Separate from the ingest worker's collector: this one only serves
+        # reads, so its rate figures are its own and never disturb ingest.
+        self.host = HostCollector(disk_path=config.disk_path)
         self.fail2ban = Fail2BanClient(
             jail=config.fail2ban_jail, enabled=config.fail2ban_enabled
         )
@@ -377,6 +385,149 @@ def create_app(config: Config | None = None) -> FastAPI:
                 },
             },
         }
+
+
+    # ---------------------------------------------------------------- events
+    @app.get("/api/events")
+    def event_feed(
+        category: str | None = Query(default=None, pattern="^(ssh|network|system)$"),
+        min_severity: str | None = Query(
+            default=None, pattern="^(critical|high|medium|low|info)$"
+        ),
+        search: str | None = Query(default=None, max_length=64),
+        limit: int = Query(default=100, ge=1, le=500),
+    ) -> dict[str, Any]:
+        """The unified feed.
+
+        The Security Events panel calls this with min_severity=medium; the
+        Activity Log calls it unfiltered. Same rows, two views.
+        """
+        conn = connect(cfg.db_path)
+        try:
+            found = events_store.recent(
+                conn, limit=limit, category=category,
+                min_severity=min_severity, search=search,
+            )
+            counts = events_store.counts_by_category(conn)
+        finally:
+            conn.close()
+        return {"events": found, "count": len(found), "category_counts": counts}
+
+    # ------------------------------------------------------------------ host
+    @app.get("/api/host")
+    def host_metrics() -> dict[str, Any]:
+        conn = connect(cfg.db_path)
+        try:
+            row = conn.execute(
+                "SELECT * FROM host_samples ORDER BY ts DESC LIMIT 1"
+            ).fetchone()
+            trend = conn.execute(
+                "SELECT ts, cpu_percent, mem_percent FROM host_samples "
+                "ORDER BY ts DESC LIMIT 60"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        if row is None:
+            # No sample yet is a real state on a freshly started monitor.
+            return {
+                "available": False,
+                "reason": "no sample recorded yet",
+                "status": state.host.status,
+            }
+
+        return {
+            "available": True,
+            "status": state.host.status,
+            "sampled_at": row["ts"],
+            "cpu_percent": row["cpu_percent"],
+            "mem_percent": row["mem_percent"],
+            "mem_total": row["mem_total"],
+            "mem_used": row["mem_used"],
+            "disk_percent": row["disk_percent"],
+            "disk_total": row["disk_total"],
+            "disk_used": row["disk_used"],
+            "net_rx_bps": row["net_rx_bps"],
+            "net_tx_bps": row["net_tx_bps"],
+            "uptime_secs": row["uptime_secs"],
+            "uptime_human": format_uptime(row["uptime_secs"]),
+            "load1": row["load1"],
+            "trend": [
+                {"ts": t["ts"], "cpu": t["cpu_percent"], "mem": t["mem_percent"]}
+                for t in reversed(trend)
+            ],
+        }
+
+    # ----------------------------------------------------------------- ports
+    @app.get("/api/ports")
+    def open_ports() -> dict[str, Any]:
+        """Live enumeration, annotated with how long each has been listening."""
+        found = ports_collect.collect()
+        conn = connect(cfg.db_path)
+        try:
+            known = {
+                (r["proto"], r["port"]): r["first_seen"]
+                for r in conn.execute("SELECT proto, port, first_seen FROM port_state")
+            }
+        finally:
+            conn.close()
+
+        rows = []
+        for entry in found:
+            item = entry.as_dict()
+            item["first_seen"] = known.get((entry.proto, entry.port))
+            rows.append(item)
+
+        return {
+            "status": ports_collect.status(),
+            "ports": rows,
+            "count": len(rows),
+            "public_count": sum(1 for r in rows if r["exposure"] == "public"),
+        }
+
+    # ----------------------------------------------------------------- users
+    @app.get("/api/users")
+    def system_users() -> dict[str, Any]:
+        accounts, policy = users_collect.collect()
+        return {
+            "status": users_collect.status(),
+            "users": [a.as_dict() for a in accounts],
+            "count": len(accounts),
+            "ssh_capable": sum(1 for a in accounts if a.ssh_access == "yes"),
+            "policy": policy.as_dict(),
+        }
+
+    # ----------------------------------------------------------------- score
+    @app.get("/api/score")
+    def security_score() -> dict[str, Any]:
+        """Rules-based indicator. Deductions are returned with the number so
+        the dashboard can show exactly why it is not 100."""
+        firewall_active, firewall_detail = firewall.is_active()
+        listening = ports_collect.collect() if cfg.collect_ports else None
+        accounts_policy = users_collect.collect()[1] if cfg.collect_users else None
+
+        conn = connect(cfg.db_path)
+        try:
+            row = conn.execute(
+                "SELECT * FROM host_samples ORDER BY ts DESC LIMIT 1"
+            ).fetchone()
+            sample = SimpleNamespace(disk_percent=row["disk_percent"]) if row else None
+            result = score_module.compute(
+                conn,
+                listening_ports=listening,
+                ssh_policy=accounts_policy,
+                host_sample=sample,
+                firewall_active=firewall_active,
+                fail2ban_ready=state.fail2ban.status == "ready",
+            )
+        finally:
+            conn.close()
+
+        payload = result.as_dict()
+        payload["firewall"] = {"active": firewall_active, "detail": firewall_detail}
+        # Phrasing matters: this is our indicator, not a claim about reality.
+        payload["caption"] = f"VPS Sentry Security Score: {result.value}/100"
+        return payload
 
     # ------------------------------------------------------------- dashboard
     @app.get("/")

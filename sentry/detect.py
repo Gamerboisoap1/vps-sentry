@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .config import Config
+from . import events
 from .db import iso, upsert_alert
 from .enrich.fail2ban import Fail2BanClient
 from .enrich.geoip import GeoIPResolver
@@ -141,6 +142,21 @@ def detect_ssh_bruteforce(
             banned=fail2ban.is_banned(ip),
             cooldown_cutoff=cooldown_cutoff,
         )
+        if created:
+            top = ", ".join(f"{u} x{n}" for u, n in usernames.most_common(3))
+            events.emit(
+                conn,
+                "SSH_BRUTE_FORCE",
+                f"{len(rows)} failed authentications from {ip}"
+                + (f" targeting {top}" if top else ""),
+                ts=rows[-1]["ts"],
+                ip=ip,
+                subject=usernames.most_common(1)[0][0] if usernames else None,
+                detail={"usernames": dict(usernames.most_common(6)),
+                        "country": country, "alert_id": alert_id},
+                # One event per incident, not per detection cycle.
+                dedupe_key=f"alert:{alert_id}",
+            )
         outcomes.append(
             AlertOutcome(alert_id, SSH_BRUTEFORCE, ip, created, len(rows))
         )
@@ -222,6 +238,18 @@ def detect_port_scan(
             banned=fail2ban.is_banned(ip),
             cooldown_cutoff=cooldown_cutoff,
         )
+        if created:
+            events.emit(
+                conn,
+                "PORT_SCAN",
+                f"{len(ports)} distinct ports probed from {ip}",
+                ts=rows[-1]["ts"],
+                ip=ip,
+                subject=str(len(ports)),
+                detail={"ports": ports[:16], "port_count": len(ports),
+                        "country": country, "alert_id": alert_id},
+                dedupe_key=f"alert:{alert_id}",
+            )
         outcomes.append(AlertOutcome(alert_id, PORT_SCAN, ip, created, len(rows)))
 
     return outcomes

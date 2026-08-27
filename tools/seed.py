@@ -94,6 +94,16 @@ def build_auth_log(now: datetime, rng: random.Random) -> list[tuple[datetime, st
             lines.append((when, f"{stamp(when)} {HOSTNAME} sshd[{pid}]: "
                                 f"Failed password for {prefix}{user} from {ip} port {port} ssh2"))
 
+    # The sequence that matters most: the brute force against 45.148.10.92
+    # stops because it succeeded. Seeding it means the demo shows the critical
+    # event rather than only the routine ones.
+    breach_at = now - timedelta(seconds=95)
+    lines.append((
+        breach_at,
+        f"{stamp(breach_at)} {HOSTNAME} sshd[28903]: Accepted password for root "
+        f"from 45.148.10.92 port 51890 ssh2",
+    ))
+
     # Ordinary system noise the parsers must ignore.
     noise = [
         "CRON[4471]: pam_unix(cron:session): session opened for user root(uid=0)",
