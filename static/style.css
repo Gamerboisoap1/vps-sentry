@@ -525,3 +525,33 @@ footer .mono { color: var(--dim); }
 
 /* WCAG 2.2 target size: the filter chips sat right on the 24px minimum. */
 .filter-btn { min-height: 28px; }
+
+
+/* ==========================================================================
+   Display-preference support beyond reduced motion
+   The sticky header is a translucent material (blur + 93% background). Two
+   user preferences make that a problem rather than a nicety, and neither was
+   handled: the page shipped a backdrop-filter that no setting could turn off.
+   ========================================================================== */
+
+@media (prefers-reduced-transparency: reduce) {
+  /* Solid, not frosted. The blur is the cost here, not the tint. */
+  header { background: var(--bg); backdrop-filter: none; }
+  .diagnostics { background: var(--surface); }
+}
+
+@media (prefers-contrast: more) {
+  /* Lift the two dimmest text tiers well past AA and make every border a
+     defined edge rather than a hint. Severity hues are left alone: they are
+     already carried by a text label and a left rule, so contrast mode must
+     not flatten the one channel that still distinguishes them. */
+  :root {
+    --faint:     #9a9ba6;   /* 7.17:1 on --bg */
+    --dim:       #c2c3cc;   /* 11.28:1 */
+    --line:      #3a3a45;
+    --line-soft: #303039;
+  }
+  header { background: var(--bg); backdrop-filter: none; }
+  .badge, .tag, .filter-btn, .freshness, .posture { border-color: var(--dim); }
+  .metric-track, .share-track { background: var(--dim); opacity: 0.35; }
+}
