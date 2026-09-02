@@ -136,16 +136,29 @@ ok "added '$SERVICE_USER' to the 'adm' group (log read access)"
 
 # Least privilege for the fail2ban cross-check: one exact command, nothing
 # else, rather than running the whole service as root for one status line.
+: > "$SUDOERS_FILE"
 if command -v fail2ban-client >/dev/null 2>&1; then
     F2B_PATH="$(command -v fail2ban-client)"
-    printf '%s ALL=(root) NOPASSWD: %s status %s\n' "$SERVICE_USER" "$F2B_PATH" "$F2B_JAIL" > "$SUDOERS_FILE"
+    printf '%s ALL=(root) NOPASSWD: %s status %s\n' "$SERVICE_USER" "$F2B_PATH" "$F2B_JAIL" >> "$SUDOERS_FILE"
+fi
+# `ufw status` needs root too. Without this the firewall rule in the security
+# score abstains forever and the score cannot tell an active firewall from a
+# disabled one.
+if command -v ufw >/dev/null 2>&1; then
+    UFW_PATH="$(command -v ufw)"
+    printf '%s ALL=(root) NOPASSWD: %s status\n' "$SERVICE_USER" "$UFW_PATH" >> "$SUDOERS_FILE"
+fi
+if [[ -s "$SUDOERS_FILE" ]]; then
     chmod 0440 "$SUDOERS_FILE"
     if visudo -cf "$SUDOERS_FILE" >/dev/null 2>&1; then
-        ok "sudoers rule written (only '$(basename "$F2B_PATH") status $F2B_JAIL')"
+        ok "sudoers rules written ($(wc -l < "$SUDOERS_FILE" | tr -d ' ') exact commands, nothing else)"
     else
         rm -f "$SUDOERS_FILE"
-        warn "sudoers rule failed validation and was removed; ban status will read 'unknown'"
+        warn "sudoers rules failed validation and were removed; ban and firewall status will read 'unknown'"
     fi
+else
+    rm -f "$SUDOERS_FILE"
+    note "neither fail2ban-client nor ufw found; no sudoers rule needed"
 fi
 
 # ------------------------------------------------------------- app files ----

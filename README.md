@@ -5,7 +5,7 @@ applies rule-based detection, and shows what is happening — on one page, over 
 SSH tunnel, with no agent and nothing new listening.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-146-4c9a76)
+![Tests](https://img.shields.io/badge/tests-149-4c9a76)
 ![Dependencies](https://img.shields.io/badge/runtime%20deps-3-6a7280)
 ![Frontend](https://img.shields.io/badge/frontend-no%20build%20step-6a7280)
 ![License](https://img.shields.io/badge/license-MIT-6a7280)
@@ -185,6 +185,34 @@ ssh -N -L 8787:127.0.0.1:8787 you@your-vps
 **Sentry binds to loopback on purpose.** Serving it on `0.0.0.0` would publish
 your log data and an unauthenticated endpoint on the machine you are trying to
 protect, which would undo the whole point.
+
+### Reaching it without a tunnel
+
+The tunnel is the default because the dashboard has **no authentication** —
+the loopback bind is the entire access control. But `/api/score` returns a
+ranked list of this host's weaknesses, `/api/users` lists who can log in over
+SSH, and `/api/ports` lists everything listening. Served openly, that is a
+reconnaissance report on the machine it is protecting, so simply setting
+`SENTRY_HOST=0.0.0.0` is the one change you should not make.
+
+To get a public URL safely, put nginx in front with a password and TLS. Sentry
+keeps binding to loopback; nginx is the only public listener and proxies
+inward, so the app cannot be reached by hitting the port directly.
+
+```bash
+sudo apt install -y nginx apache2-utils certbot python3-certbot-nginx
+sudo htpasswd -c /etc/nginx/.htpasswd-sentry YOUR_USERNAME
+sudo cp deploy/nginx-vps-sentry.conf /etc/nginx/sites-available/vps-sentry
+sudo sed -i "s/sentry.example.com/YOUR_DOMAIN/g" /etc/nginx/sites-available/vps-sentry
+sudo ln -sf /etc/nginx/sites-available/vps-sentry /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d YOUR_DOMAIN
+sudo ufw allow 'Nginx Full'
+```
+
+[`deploy/nginx-vps-sentry.conf`](deploy/nginx-vps-sentry.conf) also sets
+`noindex`, `DENY` framing and `no-referrer`, and carries a commented IP
+allow-list if you want a second lock in front of the password.
 
 ### Check these three things first
 
@@ -400,7 +428,9 @@ These are properties of the design, and stating them is part of the work.
   so "not banned" can mean "was banned, already released". Sentry records the
   status at detection time and queries again live, and shows both.
 - **The dashboard has no authentication.** It is protected by binding to
-  loopback, nothing more. Do not expose it.
+  loopback, nothing more. Do not expose it directly — put a reverse proxy
+  with a password in front instead, as described in
+  [Reaching it without a tunnel](#reaching-it-without-a-tunnel).
 
 ---
 
@@ -410,7 +440,7 @@ These are properties of the design, and stating them is part of the work.
 ./.venv/bin/python -m pytest -q
 ```
 
-146 tests covering timestamp inference, every sshd line variant, UFW parsing,
+149 tests covering timestamp inference, every sshd line variant, UFW parsing,
 all three rotation modes, threshold and window behaviour, alert escalation,
 port identification, timeline bucketing, event idempotency, score
 arithmetic, /proc address decoding, sshd policy resolution, and the API
@@ -438,7 +468,8 @@ sentry/
 └── api.py            FastAPI endpoints + static dashboard
 static/               index.html, style.css, app.js — no build step
 tools/                seed.py, replay.py — demo data
-tests/                146 tests
+tests/                149 tests
+deploy/               nginx reverse-proxy template for public access
 install.sh            One-command VPS install (systemd + hardened unit)
 demo.sh               Run locally against generated demo logs
 ```

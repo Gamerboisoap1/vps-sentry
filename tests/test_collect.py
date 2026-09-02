@@ -168,3 +168,59 @@ def test_format_uptime_is_readable():
     assert format_uptime(90) == "1m"
     assert format_uptime(3700) == "1h 1m"
     assert format_uptime(700000) == "8d 2h"
+
+
+# ------------------------------------------------------------- firewall ----
+
+class _Result:
+    def __init__(self, returncode, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+def _patch_ufw(monkeypatch, results):
+    """Drive firewall.is_active() with scripted subprocess results."""
+    from sentry.collect import firewall as fw
+    monkeypatch.setattr(fw.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(fw.shutil, "which", lambda name: f"/usr/sbin/{name}")
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        return results.pop(0)
+
+    monkeypatch.setattr(fw.subprocess, "run", fake_run)
+    return calls
+
+
+def test_firewall_reads_status_without_sudo_when_permitted(monkeypatch):
+    from sentry.collect import firewall as fw
+    calls = _patch_ufw(monkeypatch, [_Result(0, "Status: active\n")])
+    active, detail = fw.is_active()
+    assert active is True
+    assert len(calls) == 1, "a successful direct call must not escalate"
+
+
+def test_firewall_falls_back_to_sudo_when_denied(monkeypatch):
+    """The service runs unprivileged, so the direct call normally fails.
+
+    Without this fallback the firewall rule abstains forever and the score
+    reads identically whether UFW is running or switched off.
+    """
+    from sentry.collect import firewall as fw
+    calls = _patch_ufw(monkeypatch, [
+        _Result(1, "", "ERROR: You need to be root to run this script"),
+        _Result(0, "Status: inactive\n"),
+    ])
+    active, detail = fw.is_active()
+    assert active is False, "the second attempt's answer must be used"
+    assert len(calls) == 2
+    assert calls[1][:2] == ["/usr/sbin/sudo", "-n"], "must not prompt for a password"
+
+
+def test_firewall_returns_unknown_when_both_attempts_fail(monkeypatch):
+    """Undetermined is a distinct answer from 'off' and must not deduct."""
+    from sentry.collect import firewall as fw
+    _patch_ufw(monkeypatch, [_Result(1, "", "denied"), _Result(1, "", "no sudoers rule")])
+    active, detail = fw.is_active()
+    assert active is None
+    assert "could not query" in detail
