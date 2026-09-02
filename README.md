@@ -1,19 +1,73 @@
 # VPS Sentry
 
-**Lightweight VPS Security Monitor**
+**Lightweight VPS security monitor.** Reads the logs your server already writes,
+applies rule-based detection, and shows what is happening — on one page, over an
+SSH tunnel, with no agent and nothing new listening.
 
-It reads two logs your server already
-writes, applies two rule-based detectors, and shows what is happening on a
-dashboard that refreshes itself.
+![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-146-4c9a76)
+![Dependencies](https://img.shields.io/badge/runtime%20deps-3-6a7280)
+![Frontend](https://img.shields.io/badge/frontend-no%20build%20step-6a7280)
+![License](https://img.shields.io/badge/license-MIT-6a7280)
 
-A sentry watches and raises the alarm; it does not leave its post to fight.
-VPS Sentry detects and reports — blocking stays a decision you (or fail2ban)
-make.
+No AI. No external threat-intel APIs. No SIEM stack. Two regex parsers, a
+sliding window, and SQLite.
 
-No AI, no external threat-intel APIs, no SIEM stack, and no new service
-listening on the box.
+> A sentry watches and raises the alarm; it does not leave its post to fight.
+> VPS Sentry detects and reports — blocking stays a decision you, or fail2ban,
+> make.
 
 ---
+
+## Why it might interest you
+
+Most log monitors are a thin wrapper over `grep`. The interesting part of this
+one is the set of traps it handles, each of which silently breaks the naive
+version:
+
+| Trap | What happens without handling it |
+| --- | --- |
+| **Key-only servers** | `PasswordAuthentication no` never writes `Failed password`. The monitor reports zero during a live attack. |
+| **One attempt, two log lines** | sshd logs `Invalid user x` *and* `Failed password for invalid user x`. Counting both halves your threshold. |
+| **Log rotation** | A saved byte offset points into a file that no longer exists. The monitor goes permanently blind. |
+| **Year-less syslog stamps** | `Dec 31 23:58` parsed on Jan 1 lands twelve months in the future. |
+| **UFW throttling its own logs** | A 1000-port sweep may leave ten lines. You are sampling a scan, not observing one. |
+| **Going blind quietly** | A monitor that stopped reading looks exactly like a quiet network. |
+
+Each one has a test. [The engineering section](#the-engineering) explains the
+handling.
+
+### The one signal worth waking up for
+
+A successful SSH login is ordinarily routine `info`. A successful login **from
+an address that tripped an alert within the last hour** is `SSH_LOGIN_AFTER_ATTACK`
+at `critical`, and costs 25 points of score.
+
+That is the brute force stopping *because it worked* — and it is the sequence
+this whole tool exists to catch.
+
+Classification deliberately runs **after** detection in the ingest cycle: on a
+first ingest the alert that makes the login significant is created in that same
+cycle, so running earlier files the breach as an ordinary login. There is a
+regression test for exactly that ordering.
+
+---
+
+## Contents
+
+- [What it detects](#what-it-detects)
+- [Quick start](#quick-start)
+- [Installing on a VPS](#installing-on-a-vps)
+- [On the dashboard](#on-the-dashboard)
+- [The engineering](#the-engineering)
+- [Configuration](#configuration)
+- [API](#api)
+- [Known limitations](#known-limitations)
+- [Tests](#tests)
+- [Layout](#layout)
+
+---
+
 
 ## What it detects
 
@@ -39,101 +93,13 @@ Every alert traces back to specific events and can be explained line by line.
 All three reuse data already flowing through the pipeline. None adds a log
 source, a daemon, or an inbound port.
 
-## On the dashboard
-
-- **Activity timeline** — 24 hourly buckets, failed authentications and blocked
-  probes as separate series. Hourly rather than averaged, because a brute force
-  is a burst and averaging is exactly what hides one.
-- **Service identification** — probed ports are named and categorised, so a
-  scan report reads `27017 MongoDB` rather than a bare number. Ports are tinted
-  by what a hit would have cost: databases red, remote access amber, and so on.
-- **Threat posture** — a plain count of alerts still moving in the last fifteen
-  minutes, not a score. The number on screen always traces to specific rows.
-- **Freshness** — time since the last successful log read, always visible.
-- **Username breakdown** — which accounts attackers targeted, as shares.
-
 ---
-
-## What else it shows
-
-Everything below reuses data the host already publishes. No agent is
-installed, nothing new listens, and each collector can be switched off
-independently.
-
-**Security Events and Activity Log** are two views of one table. The Activity
-Log is everything observed; Security Events is the same rows filtered to
-medium severity and above. Keeping one store means an event cannot appear in
-one view and be missing from the other. The log filters by category
-(SSH / Network / System) and searches across IP, username and description.
-
-**VPS health** — CPU, memory, disk, network throughput and uptime, read from
-`/proc/stat`, `/proc/meminfo`, `statvfs` and `/proc/net/dev`. Memory uses
-`MemAvailable` rather than `MemFree`, which is why it does not report 95% on
-an idle box with a warm page cache. CPU is a rate, so the first cycle after
-startup reports nothing rather than a fabricated figure.
-
-**Open ports** — listening sockets from `/proc/net/tcp[6]` and `/proc/net/udp[6]`,
-named through the same service table the scan detector uses. Each is
-classified by exposure, because a service bound to `127.0.0.1` is not
-reachable from the internet and calling it "open" would be alarming and
-wrong. A port that appears when it was not there before raises a `NEW_PORT`
-event; the first run records a baseline instead of announcing every existing
-listener at once.
-
-**System users** — accounts from `/etc/passwd`, resolved against the effective
-sshd policy: `AllowUsers`, `AllowGroups`, `DenyUsers`, `PermitRootLogin`,
-`PasswordAuthentication` and the presence of `authorized_keys`. The question
-answered is not "who exists" but "who can actually log in", which is a
-different and smaller set. Strictly read-only.
-
-**Security score** — a plain sum of named deductions from a base of 100,
-returned together with every deduction so the dashboard can show its working.
-A rule whose input is unavailable does not deduct; it is listed as not
-assessed, because penalising the operator for something we could not measure
-would drift the score down on hardened hosts that merely deny us a reading.
-
-Phrase it as *VPS Sentry Security Score: 87/100*, never "your VPS is 87%
-secure". The first is this tool's own indicator; the second is a claim about
-reality that a rule set this size cannot support.
-
-### The one signal worth waking up for
-
-A successful SSH login is ordinarily filed as routine `info`. A successful
-login from an address that tripped an alert within the last hour is filed as
-`SSH_LOGIN_AFTER_ATTACK` at `critical`, and costs 25 points of score. That is
-the brute force stopping because it worked, and it is the sequence this whole
-tool exists to catch.
-
-Classification deliberately runs *after* detection in the ingest cycle: on a
-first ingest the alert that makes the login significant is created in that
-same cycle, so running earlier would file the breach as an ordinary login.
-
-## Additional endpoints
-
-| Endpoint | Returns |
-| --- | --- |
-| `GET /api/events` | Unified feed; `category`, `min_severity`, `search`, `limit` |
-| `GET /api/host` | Latest host sample plus a short trend |
-| `GET /api/ports` | Live listening sockets with exposure |
-| `GET /api/users` | Accounts and effective SSH policy |
-| `GET /api/score` | Score, band, and every deduction |
-
-## Additional configuration
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `SENTRY_COLLECT_HOST` | `1` | Sample CPU/memory/disk/network |
-| `SENTRY_COLLECT_PORTS` | `1` | Enumerate listening sockets |
-| `SENTRY_COLLECT_USERS` | `1` | Read account list and sshd policy |
-| `SENTRY_DISK_PATH` | `/` | Filesystem to report usage for |
-| `SENTRY_HOST_RETENTION_HOURS` | `48` | Host-sample retention |
-
 
 ## Quick start
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pip install -r requirements-dev.txt
 ```
 
 Run it against generated demo data:
@@ -255,30 +221,66 @@ banned" are different facts.
 
 ---
 
-## Configuration
+## On the dashboard
 
-Every tunable is an environment variable, defined in `sentry/config.py`.
+- **Activity timeline** — 24 hourly buckets, failed authentications and blocked
+  probes as separate series. Hourly rather than averaged, because a brute force
+  is a burst and averaging is exactly what hides one.
+- **Service identification** — probed ports are named and categorised, so a
+  scan report reads `27017 MongoDB` rather than a bare number. Ports are tinted
+  by what a hit would have cost: databases red, remote access amber, and so on.
+- **Threat posture** — a plain count of alerts still moving in the last fifteen
+  minutes, not a score. The number on screen always traces to specific rows.
+- **Freshness** — time since the last successful log read, always visible.
+- **Username breakdown** — which accounts attackers targeted, as shares.
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `SENTRY_AUTH_LOG` | `/var/log/auth.log` | SSH log to read |
-| `SENTRY_UFW_LOG` | `/var/log/ufw.log` | Firewall log to read |
-| `SENTRY_DB` | `data/sentry.db` | SQLite file |
-| `SENTRY_SSH_THRESHOLD` | `5` | Failed auths to trip the rule |
-| `SENTRY_SSH_WINDOW` | `600` | SSH window, seconds |
-| `SENTRY_SSH_COOLDOWN` | `600` | Suppression window, seconds |
-| `SENTRY_SCAN_PORTS` | `4` | Distinct ports to trip the rule |
-| `SENTRY_SCAN_WINDOW` | `60` | Scan window, seconds |
-| `SENTRY_POLL_SECONDS` | `10` | Ingest cycle interval |
-| `SENTRY_STALE_AFTER` | `60` | Freshness alarm threshold |
-| `SENTRY_RETENTION_DAYS` | `30` | Event retention horizon |
-| `SENTRY_HOST` / `SENTRY_PORT` | `127.0.0.1` / `8787` | Bind address |
-| `SENTRY_F2B_JAIL` | `sshd` | fail2ban jail to query |
-| `SENTRY_F2B_ENABLED` | `1` | Set to `0` to skip fail2ban entirely |
+## What else it shows
+
+Everything below reuses data the host already publishes. No agent is
+installed, nothing new listens, and each collector can be switched off
+independently.
+
+**Security Events and Activity Log** are two views of one table. The Activity
+Log is everything observed; Security Events is the same rows filtered to
+medium severity and above. Keeping one store means an event cannot appear in
+one view and be missing from the other. The log filters by category
+(SSH / Network / System) and searches across IP, username and description.
+
+**VPS health** — CPU, memory, disk, network throughput and uptime, read from
+`/proc/stat`, `/proc/meminfo`, `statvfs` and `/proc/net/dev`. Memory uses
+`MemAvailable` rather than `MemFree`, which is why it does not report 95% on
+an idle box with a warm page cache. CPU is a rate, so the first cycle after
+startup reports nothing rather than a fabricated figure.
+
+**Open ports** — listening sockets from `/proc/net/tcp[6]` and `/proc/net/udp[6]`,
+named through the same service table the scan detector uses. Each is
+classified by exposure, because a service bound to `127.0.0.1` is not
+reachable from the internet and calling it "open" would be alarming and
+wrong. A port that appears when it was not there before raises a `NEW_PORT`
+event; the first run records a baseline instead of announcing every existing
+listener at once.
+
+**System users** — accounts from `/etc/passwd`, resolved against the effective
+sshd policy: `AllowUsers`, `AllowGroups`, `DenyUsers`, `PermitRootLogin`,
+`PasswordAuthentication` and the presence of `authorized_keys`. The question
+answered is not "who exists" but "who can actually log in", which is a
+different and smaller set. Strictly read-only.
+
+**Security score** — a plain sum of named deductions from a base of 100,
+returned together with every deduction so the dashboard can show its working.
+A rule whose input is unavailable does not deduct; it is listed as not
+assessed, because penalising the operator for something we could not measure
+would drift the score down on hardened hosts that merely deny us a reading.
+
+Phrase it as *VPS Sentry Security Score: 87/100*, never "your VPS is 87%
+secure". The first is this tool's own indicator; the second is a claim about
+reality that a rule set this size cannot support.
 
 ---
 
-## How it works
+## The engineering
+
+### The pipeline
 
 ```
 /var/log/auth.log ─┐
@@ -329,6 +331,56 @@ emits a fresh alert per log line.
 
 ---
 
+## Configuration
+
+Every tunable is an environment variable, defined in `sentry/config.py`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SENTRY_AUTH_LOG` | `/var/log/auth.log` | SSH log to read |
+| `SENTRY_UFW_LOG` | `/var/log/ufw.log` | Firewall log to read |
+| `SENTRY_DB` | `data/sentry.db` | SQLite file |
+| `SENTRY_SSH_THRESHOLD` | `5` | Failed auths to trip the rule |
+| `SENTRY_SSH_WINDOW` | `600` | SSH window, seconds |
+| `SENTRY_SSH_COOLDOWN` | `600` | Suppression window, seconds |
+| `SENTRY_SCAN_PORTS` | `4` | Distinct ports to trip the rule |
+| `SENTRY_SCAN_WINDOW` | `60` | Scan window, seconds |
+| `SENTRY_POLL_SECONDS` | `10` | Ingest cycle interval |
+| `SENTRY_STALE_AFTER` | `60` | Freshness alarm threshold |
+| `SENTRY_RETENTION_DAYS` | `30` | Event retention horizon |
+| `SENTRY_HOST` / `SENTRY_PORT` | `127.0.0.1` / `8787` | Bind address |
+| `SENTRY_F2B_JAIL` | `sshd` | fail2ban jail to query |
+| `SENTRY_F2B_ENABLED` | `1` | Set to `0` to skip fail2ban entirely |
+| `SENTRY_COLLECT_HOST` | `1` | Sample CPU / memory / disk / network |
+| `SENTRY_COLLECT_PORTS` | `1` | Enumerate listening sockets |
+| `SENTRY_COLLECT_USERS` | `1` | Read account list and sshd policy |
+| `SENTRY_DISK_PATH` | `/` | Filesystem to report usage for |
+| `SENTRY_HOST_RETENTION_HOURS` | `48` | Host-sample retention |
+
+Each collector can be switched off independently, so a host where `/proc` is
+restricted or `lsof` is absent still runs the log detectors.
+
+---
+
+## API
+
+All endpoints are read-only JSON. There are no write endpoints: the tool
+observes and never acts.
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /api/alerts` | Open incidents; `kind`, `limit` |
+| `GET /api/stats` | Totals, username shares, countries, top ports |
+| `GET /api/timeline` | Hourly buckets for the activity chart; `hours` |
+| `GET /api/health` | Freshness per source, rule thresholds, enrichment status |
+| `GET /api/events` | Unified feed; `category`, `min_severity`, `search`, `limit` |
+| `GET /api/host` | Latest host sample plus a short trend |
+| `GET /api/ports` | Live listening sockets with exposure |
+| `GET /api/users` | Accounts and effective SSH policy |
+| `GET /api/score` | Score, band, and every deduction |
+
+---
+
 ## Known limitations
 
 These are properties of the design, and stating them is part of the work.
@@ -358,9 +410,11 @@ These are properties of the design, and stating them is part of the work.
 ./.venv/bin/python -m pytest -q
 ```
 
-87 tests covering timestamp inference, every sshd line variant, UFW parsing,
+146 tests covering timestamp inference, every sshd line variant, UFW parsing,
 all three rotation modes, threshold and window behaviour, alert escalation,
-port identification, timeline bucketing, and the API contract — including that
+port identification, timeline bucketing, event idempotency, score
+arithmetic, /proc address decoding, sshd policy resolution, and the API
+contract — including that
 stats exclude precursor lines and that the health endpoint reports staleness.
 
 ---
@@ -375,13 +429,29 @@ sentry/
 ├── parsers/          ssh.py, ufw.py — regex extraction
 ├── detect.py         Threshold + window rules
 ├── enrich/           geoip.py, fail2ban.py — both degrade gracefully
+├── collect/          host.py, ports.py, users.py, firewall.py — host state
 ├── services.py       Port to service and category identification
+├── events.py         The unified event stream (feed + activity log)
+├── score.py          Rules-based posture score, deductions included
 ├── db.py             Schema, event insert, alert upsert, retention
 ├── ingest.py         The cycle that ties it together
 └── api.py            FastAPI endpoints + static dashboard
 static/               index.html, style.css, app.js — no build step
 tools/                seed.py, replay.py — demo data
-tests/                87 tests
+tests/                146 tests
 install.sh            One-command VPS install (systemd + hardened unit)
 demo.sh               Run locally against generated demo logs
 ```
+
+---
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
+
+## A note on the data
+
+Every figure in a fresh checkout is **synthetic**, generated by `tools/seed.py`
+so the dashboard is demonstrable without waiting for a real attack. The seeded
+attacker addresses are real allocations belonging to third parties and must not
+be presented as observed attackers. Point it at a real host to see real data.
